@@ -22,5 +22,6 @@ jobs:
           cache: gradle
 
       # 컴파일(APK 생성) → Robolectric 단위 테스트 → lint 순서로 확인한다.
+      # --continue: 한 단계가 실패해도 나머지를 실행해 문제를 한 번에 보여 준다.
       - name: Build, unit test, lint
-        run: ./gradlew --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
+        run: ./gradlew --no-daemon --continue assembleDebug testDebugUnitTest lintDebug

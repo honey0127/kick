@@ -39,6 +39,17 @@ android {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    // Robolectric은 java.io.FileDescriptor 내부를 반사(reflection)로 다루는데, JDK 17+에서는 막혀 있다.
+    // 단위 테스트 JVM에서만 해당 패키지를 연다 (앱 코드와 무관).
+    jvmArgs(
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+    )
+    // 실패한 테스트의 예외 메시지와 스택을 콘솔(CI 로그)에 전부 출력한다.
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
