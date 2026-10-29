@@ -64,6 +64,9 @@ dependencies {
     testImplementation(libs.androidx.junit)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    // Compose ui-test가 끌어오는 구버전 Espresso는 API 37에서 사라진 InputManager.getInstance()를 호출한다.
+    // 3.7.0부터 getSystemService를 쓰므로 단위 테스트에서도 이 버전으로 맞춘다.
+    testImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
