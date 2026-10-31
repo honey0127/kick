@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.safezone.ui.home.HomeScreen
 import com.example.safezone.ui.photo.PhotoPreviewScreen
+import com.example.safezone.ui.photo.PhotoSelectScreen
 
 /** 사진을 어디서 가져왔는지. "다시 선택하기"가 같은 곳으로 돌아가는 데 쓴다. */
 enum class PhotoSource { CAMERA, GALLERY }
@@ -22,6 +23,7 @@ enum class PhotoSource { CAMERA, GALLERY }
 /** 화면 경로. 사진 URI는 문자열로 인코딩해 경로에 담는다. */
 object Routes {
     const val HOME = "home"
+    const val PHOTO_SELECT = "photo_select"
     const val PHOTO_PREVIEW = "photo_preview/{source}/{uri}"
 
     fun photoPreview(source: PhotoSource, uri: Uri): String =
@@ -61,9 +63,18 @@ fun AppNavigation(modifier: Modifier = Modifier) {
     ) {
         composable(Routes.HOME) {
             HomeScreen(
-                // TODO(4단계): PhotoSelectScreen으로 이동
-                onTakePhotoClick = showNotImplemented,
+                onTakePhotoClick = { navController.navigate(Routes.PHOTO_SELECT) },
                 onPickPhotoClick = launchPhotoPicker,
+            )
+        }
+
+        composable(Routes.PHOTO_SELECT) {
+            PhotoSelectScreen(
+                onBackClick = { navController.popBackStack() },
+                // 촬영 화면은 스택에 남겨 둔다 → 미리보기에서 "다시 선택하기"를 누르면 여기로 돌아온다.
+                onPhotoCaptured = { uri ->
+                    navController.navigate(Routes.photoPreview(PhotoSource.CAMERA, uri))
+                },
             )
         }
 
@@ -84,7 +95,6 @@ fun AppNavigation(modifier: Modifier = Modifier) {
                 onReselectClick = {
                     when (source) {
                         PhotoSource.GALLERY -> launchPhotoPicker()
-                        // TODO(4단계): 촬영 화면으로 돌아가기
                         PhotoSource.CAMERA -> navController.popBackStack()
                     }
                 },

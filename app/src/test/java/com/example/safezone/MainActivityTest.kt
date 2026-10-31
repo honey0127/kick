@@ -1,18 +1,18 @@
 package com.example.safezone
 
+import android.Manifest
 import android.provider.MediaStore
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.shadows.ShadowToast
 
 /**
  * 첫 화면의 성공 기준을 확인한다.
@@ -33,6 +33,19 @@ class MainActivityTest {
     }
 
     @Test
+    fun cameraButton_withPermission_showsCaptureGuideAndShutter() {
+        shadowOf(composeRule.activity.application).grantPermissions(Manifest.permission.CAMERA)
+
+        composeRule.onNodeWithText("사진 촬영하기").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("킥보드 전체가 보이도록 촬영해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("주변 보행 공간도 함께 촬영해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("점자블록이나 출입구가 있다면 포함해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("사진 촬영").assertIsDisplayed()
+    }
+
+    @Test
     fun galleryButton_launchesPhotoPicker() {
         composeRule.onNodeWithText("갤러리에서 선택하기").performClick()
         composeRule.waitForIdle()
@@ -44,14 +57,5 @@ class MainActivityTest {
         assert(action == MediaStore.ACTION_PICK_IMAGES || action == android.content.Intent.ACTION_OPEN_DOCUMENT) {
             "예상하지 못한 intent action: $action"
         }
-    }
-
-    @Test
-    fun cameraButton_showsNotImplementedToast() {
-        // 촬영 화면은 4단계에서 연결한다. 그전까지는 안내 토스트만 띄운다.
-        composeRule.onNodeWithText("사진 촬영하기").performClick()
-        composeRule.waitForIdle()
-        assertEquals(1, ShadowToast.shownToastCount())
-        assertEquals("다음 단계에서 구현할 기능입니다", ShadowToast.getTextOfLatestToast())
     }
 }
