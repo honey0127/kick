@@ -71,6 +71,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
+    // 테스트 환경(Robolectric)에서는 실제 이미지를 디코딩하지 못하므로 가짜 이미지 로더를 쓴다.
+    testImplementation(libs.coil.test)
     testImplementation(libs.androidx.junit)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
