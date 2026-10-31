@@ -4,12 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.safezone.ui.components.PrimaryButton
+import com.example.safezone.ui.components.SecondaryButton
 import com.example.safezone.ui.theme.SafeZoneTheme
 
 /**
@@ -51,19 +53,17 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(40.dp))
 
-        Button(
+        PrimaryButton(
+            text = "사진 촬영하기",
             onClick = onTakePhotoClick,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("사진 촬영하기")
-        }
+            icon = Icons.Outlined.PhotoCamera,
+        )
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(
+        SecondaryButton(
+            text = "갤러리에서 선택하기",
             onClick = onPickPhotoClick,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("갤러리에서 선택하기")
-        }
+            icon = Icons.Outlined.Image,
+        )
 
         Spacer(modifier = Modifier.height(32.dp))
 
