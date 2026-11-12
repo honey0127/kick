@@ -35,11 +35,13 @@ function centroid(geom) {
   return [y / n, x / n];
 }
 
-api("/api/zones").then((gj) => {
+Promise.all([api("/api/zones"), api("/api/config")]).then(([gj, cfg]) => {
   L.geoJSON(gj, {
     style: (f) => zoneStyle[f.properties.type] || {},
     onEachFeature: (f, layer) => layer.bindTooltip(f.properties.name || f.properties.type),
   }).addTo(map);
+  if (!cfg.dev) return;
+  $("#dev-tools").hidden = false;
   const spots = $("#dev-spots");
   for (const f of gj.features) {
     const [lat, lon] = centroid(f.geometry);

@@ -52,7 +52,21 @@ python -m venv .venv
 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-http://localhost:8000 → "테스트 위치로 확인"에서 구역을 골라 흐름을 따라갈 수 있습니다. 첫 실행 때 모델(YOLO 20MB, SegFormer 110MB)을 내려받습니다.
+http://localhost:8000 에서 반납 흐름을 따라갈 수 있습니다. 첫 실행 때 모델(YOLO 20MB, SegFormer 110MB)을 내려받습니다.
+
+**개발 모드**: `KICK_DEV=1` 로 실행하면 웹 화면에 "테스트 위치로 확인"(GPS 없이 구역 선택)이 보이고, 세션 없이 사진만 판정하는 `/api/analyze` 가 열립니다. 기본값(꺼짐)에서는 둘 다 막혀 있으니 실제 서비스에서는 켜지 마세요.
+
+```bash
+# PowerShell:  $env:KICK_DEV="1"; .venv/Scripts/python -m uvicorn server.main:app --port 8000
+KICK_DEV=1 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+```
+
+| 환경변수 | 기본값 | 뜻 |
+|---|---|---|
+| `KICK_DEV` | `0` | 개발용 기능 켜기 |
+| `KICK_MAX_UPLOAD_MB` | `15` | 사진 업로드 최대 크기 (넘으면 413) |
+| `KICK_MAX_PHOTO_ATTEMPTS` | `10` | 반납 세션 하나에서 사진 판정 최대 횟수 (넘으면 429, 위치 확인부터 다시) |
+| `KICK_SAVE_UPLOADS` | `1` | 반납 사진 저장 (EXIF 를 지우고 다시 인코딩해 저장) |
 
 **휴대폰으로 테스트할 때**: 브라우저는 HTTPS에서만 GPS·실시간 카메라를 허용합니다(HTTP면 카메라 앱 업로드로 대체됨). 자체 서명 인증서로 실행하세요.
 

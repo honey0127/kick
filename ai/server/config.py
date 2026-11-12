@@ -25,3 +25,10 @@ ZONES_FILE = Path(os.getenv("KICK_ZONES", ROOT / "server" / "zones.geojson"))
 REQUIRE_PARKING_ZONE = os.getenv("KICK_REQUIRE_PARKING_ZONE", "0") == "1"  # 1이면 지정 주차구역 안에서만 반납
 MAX_GPS_ACCURACY_M = float(os.getenv("KICK_MAX_GPS_ACCURACY_M", "50"))
 SESSION_TTL_S = int(os.getenv("KICK_SESSION_TTL_S", "600"))  # 위치 확인 후 사진·결제까지 유효 시간
+
+# 업로드·남용 제한
+MAX_UPLOAD_MB = float(os.getenv("KICK_MAX_UPLOAD_MB", "15"))
+MAX_PHOTO_ATTEMPTS = int(os.getenv("KICK_MAX_PHOTO_ATTEMPTS", "10"))  # 세션 하나에서 사진 판정 최대 횟수
+
+# 1이면 개발용 기능을 켠다: 세션 없는 /api/analyze, 웹 화면의 '테스트 위치로 확인'(GPS 없이 위치 지정)
+DEV_MODE = os.getenv("KICK_DEV", "0") == "1"

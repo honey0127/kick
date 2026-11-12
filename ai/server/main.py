@@ -56,6 +56,21 @@ def _session(token: str, *stages: str) -> dict:
     return s
 
 
+def _purge_expired_sessions() -> None:
+    now = time.time()
+    for token, s in list(sessions.items()):
+        if now - s["created"] > config.SESSION_TTL_S:
+            sessions.pop(token, None)
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    limit = int(config.MAX_UPLOAD_MB * 1024 * 1024)
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"사진이 너무 커요. {config.MAX_UPLOAD_MB:g}MB 이하로 올려주세요.")
+    return data
+
+
 def _decode(data: bytes) -> np.ndarray:
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
@@ -63,14 +78,15 @@ def _decode(data: bytes) -> np.ndarray:
     return img
 
 
-def _save(img_bytes: bytes, result: dict, meta: dict) -> str:
+def _save(img: np.ndarray, result: dict, meta: dict) -> str:
     if not config.SAVE_UPLOADS:
         return ""
     day = datetime.now().strftime("%Y%m%d")
     d = config.COLLECT_DIR / day
     d.mkdir(parents=True, exist_ok=True)
     name = datetime.now().strftime("%H%M%S_") + secrets.token_hex(3)
-    (d / f"{name}.jpg").write_bytes(img_bytes)
+    # 원본 바이트 대신 다시 인코딩해 저장: EXIF(촬영 GPS·기기 정보)를 남기지 않는다
+    (d / f"{name}.jpg").write_bytes(cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 92])[1].tobytes())
     rec = {k: v for k, v in result.items() if not k.endswith("_jpeg")} | {"meta": meta}
     (d / f"{name}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
     return f"{day}/{name}"
@@ -93,6 +109,11 @@ def health():
     return {"ok": True, "model_loaded": _analyzer is not None, "backend": _analyzer.backend if _analyzer else None}
 
 
+@app.get("/api/config")
+def get_config():
+    return {"dev": config.DEV_MODE}
+
+
 @app.get("/api/zones")
 def get_zones():
     return zones.geojson
@@ -100,6 +121,7 @@ def get_zones():
 
 @app.post("/api/return/location")
 def check_location(body: LocationIn):
+    _purge_expired_sessions()
     r = zones.check(body.lat, body.lon, body.accuracy)
     if r["ok"]:
         token = secrets.token_urlsafe(16)
@@ -119,12 +141,14 @@ def check_location(body: LocationIn):
 @app.post("/api/return/photo")
 async def check_photo(token: str = Form(...), file: UploadFile = File(...)):
     s = _session(token, "location_ok", "photo_ok")
-    data = await file.read()
-    img = _decode(data)
+    if s["attempts"] >= config.MAX_PHOTO_ATTEMPTS:
+        sessions.pop(token, None)
+        raise HTTPException(429, "사진 판정 횟수를 넘었어요. 위치 확인부터 다시 해주세요.")
+    img = _decode(await _read_upload(file))
     result = await run_in_threadpool(get_analyzer().analyze, img)
     s["attempts"] += 1
     s["stage"] = "photo_ok" if result["status"] == APPROVE else "location_ok"
-    result["photo_id"] = _save(data, result, {k: s[k] for k in ("vehicle_id", "lat", "lon", "attempts")})
+    result["photo_id"] = _save(img, result, {k: s[k] for k in ("vehicle_id", "lat", "lon", "attempts")})
     result["attempts"] = s["attempts"]
     return result
 
@@ -140,8 +164,10 @@ def pay(body: TokenIn):
 
 @app.post("/api/analyze")
 async def analyze_only(file: UploadFile = File(...)):
-    """개발용: 세션 없이 사진만 판정."""
-    img = _decode(await file.read())
+    """개발용: 세션 없이 사진만 판정 (KICK_DEV=1 일 때만)."""
+    if not config.DEV_MODE:
+        raise HTTPException(404, "Not Found")
+    img = _decode(await _read_upload(file))
     return await run_in_threadpool(get_analyzer().analyze, img)
 
 
