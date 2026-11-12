@@ -39,7 +39,7 @@ class MockPhotoAnalyzer(
         )
         ParkingStatus.UNCERTAIN -> listOf(
             "사진 촬영 각도",
-            "킥보드 주변 공간 확인 어려움",
+            "자전거 주변 공간 확인 어려움",
             "이미지 품질 부족",
         )
     }

@@ -1,5 +1,6 @@
 package com.example.safezone.navigation
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -16,8 +19,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.safezone.BuildConfig
 import com.example.safezone.data.analysis.MockPhotoAnalyzer
+import com.example.safezone.data.analysis.PhotoAnalyzer
+import com.example.safezone.data.analysis.RemotePhotoAnalyzer
 import com.example.safezone.data.model.ParkingStatus
+import java.io.IOException
 import com.example.safezone.ui.analysis.AnalysisUiState
 import com.example.safezone.ui.analysis.AnalysisViewModel
 import com.example.safezone.ui.analysis.AnalyzingScreen
@@ -41,14 +48,27 @@ object Routes {
         "photo_preview/${source.name}/${Uri.encode(uri.toString())}"
 }
 
+/** 서버 주소(BuildConfig.ANALYSIS_SERVER_URL)가 있으면 실제 AI 서버, 없으면 UI 확인용 임시 분석기. */
+private fun createPhotoAnalyzer(context: Context): PhotoAnalyzer {
+    val serverUrl = BuildConfig.ANALYSIS_SERVER_URL
+    if (serverUrl.isBlank()) return MockPhotoAnalyzer()
+    return RemotePhotoAnalyzer(
+        serverUrl = serverUrl,
+        readPhoto = { uri ->
+            context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+                ?: throw IOException("사진을 열 수 없어요: $uri")
+        },
+    )
+}
+
 @Composable
 fun AppNavigation(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
 
     // 분석 화면과 결과 화면이 같은 결과를 보도록 Activity 범위의 ViewModel 하나를 함께 쓴다.
-    // ⚠️ 지금은 UI 확인용 MockPhotoAnalyzer. 실제 AI 분석이 준비되면 여기서 구현체만 교체한다.
+    val appContext = LocalContext.current.applicationContext
     val analysisViewModel: AnalysisViewModel = viewModel {
-        AnalysisViewModel(analyzer = MockPhotoAnalyzer())
+        AnalysisViewModel(analyzer = createPhotoAnalyzer(appContext))
     }
 
     // 결과 화면에서 다시 찍으러 갈 때: 홈 위에 촬영 화면만 남긴다.

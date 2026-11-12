@@ -1,9 +1,9 @@
 # Safe Zone
 
-주차한 전동 킥보드 사진으로 보행 공간을 막고 있는지 확인하는 Android 앱입니다.
+주차한 자전거 사진으로 보행 공간을 막고 있는지 확인하는 Android 앱입니다. AI 분석 서버는 [`ai/`](ai/README.md) 폴더에 있습니다.
 
-> **현재 상태:** 앱의 UI와 화면 이동은 모두 동작합니다. **AI 분석은 아직 연결되지 않았습니다.**
-> 분석 결과는 사진을 보지 않는 UI 확인용 임시 결과이며, 결과 화면에 "테스트용 임시 결과"라고 표시됩니다.
+> **현재 상태:** 서버 주소를 설정하면 `ai/` 의 AI 서버로 실제 분석을 합니다 (아래 "AI 분석 연결 방법").
+> 주소를 설정하지 않으면 사진을 보지 않는 UI 확인용 임시 결과를 쓰고, 결과 화면에 "테스트용 임시 결과"라고 표시됩니다.
 
 ## 화면 흐름
 
@@ -61,18 +61,34 @@
 
 ## AI 분석 연결 방법
 
-화면은 `PhotoAnalyzer` 인터페이스만 사용합니다. 실제 분석기를 만들면 한 곳만 바꾸면 됩니다.
+화면은 `PhotoAnalyzer` 인터페이스만 사용하고, `navigation/AppNavigation.kt` 가 서버 주소에 따라 구현을 고릅니다.
 
-1. `PhotoAnalyzer`를 구현합니다. 분석 근거(`findings`)에는 실제로 확인한 항목만 넣고 `isMock = false`로 둡니다. 실패하면 예외를 던집니다.
-2. `navigation/AppNavigation.kt`에서 `MockPhotoAnalyzer()`를 새 구현으로 바꿉니다.
+| 서버 주소 | 쓰는 분석기 |
+|---|---|
+| 있음 | `RemotePhotoAnalyzer` — 사진을 AI 서버의 `/api/analyze` 로 보내 판정 |
+| 없음 (기본) | `MockPhotoAnalyzer` — 약 2초 뒤 SAFE → UNSAFE → UNCERTAIN 순서로 정해진 결과 |
 
-```kotlin
-interface PhotoAnalyzer {
-    suspend fun analyze(photoUri: String): AnalysisResult
-}
+**1. AI 서버 실행** (`ai/` 폴더, 자세한 설치는 [ai/README.md](ai/README.md))
+
+```bash
+# PowerShell:  $env:KICK_OPEN_ANALYZE="1"; .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+KICK_OPEN_ANALYZE=1 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-지금 쓰는 `MockPhotoAnalyzer`는 약 2초 기다린 뒤 SAFE → UNSAFE → UNCERTAIN 순서로 정해진 결과를 돌려줍니다.
+`KICK_OPEN_ANALYZE=1` 을 빼면 `/api/analyze` 가 닫혀 있어 앱에 "분석하지 못했어요"가 뜹니다.
+
+**2. 앱에 서버 주소 지정** — `local.properties` 에 한 줄 추가 (PC마다 다르므로 git 에 올리지 않음)
+
+```properties
+# 에뮬레이터에서 같은 PC의 서버: 10.0.2.2 / 실제 휴대폰: PC의 와이파이 IP (예: 192.168.0.10)
+analysis.server.url=http://10.0.2.2:8000
+```
+
+명령줄에서는 `./gradlew assembleDebug -PanalysisServerUrl=http://10.0.2.2:8000` 로도 지정할 수 있습니다.
+디버그 빌드만 `http://` 를 허용합니다. 출시 빌드는 `https://` 서버가 필요합니다.
+
+**판정 변환**: 서버 `APPROVE / REJECT / RETAKE` → 앱 `SAFE / UNSAFE / UNCERTAIN`.
+분석 근거에는 서버가 실제로 잰 값(남은 통행폭 또는 보도 폭 점유율)과 서버가 돌려준 사유 문구만 넣습니다.
 
 ## 프로젝트 구조
 
@@ -84,6 +100,7 @@ app/src/main/java/com/example/safezone/
 │   ├── model/AnalysisResult.kt      결과 상태(SAFE/UNSAFE/UNCERTAIN), 근거, 임시 결과 여부
 │   └── analysis/
 │       ├── PhotoAnalyzer.kt         분석기 인터페이스
+│       ├── RemotePhotoAnalyzer.kt   AI 서버에 사진을 보내는 분석기, 응답 변환
 │       └── MockPhotoAnalyzer.kt     UI 확인용 임시 분석기
 └── ui/
     ├── home/HomeScreen.kt
@@ -112,7 +129,7 @@ app/src/main/java/com/example/safezone/
 - Android Studio Quail 4(2026.1.4) 이상. 권장 버전은 최신 안정판인 Rabbit 2(2026.2.2)입니다. AGP 9.4를 지원하는 가장 낮은 버전이 Quail 4입니다.
 - Kotlin + Jetpack Compose, AGP 9.4.0, Gradle 9.6.1(wrapper 포함)
 - compileSdk/targetSdk 37, minSdk 24
-- 권한: 카메라 (카메라가 없는 기기에도 설치 가능, 갤러리 선택은 권한 불필요)
+- 권한: 카메라 (카메라가 없는 기기에도 설치 가능, 갤러리 선택은 권한 불필요), 인터넷 (AI 서버 연결)
 
 ## 실행
 
@@ -142,13 +159,15 @@ sdk.dir=C\:\\Users\\<사용자>\\AppData\\Local\\Android\\Sdk
 | `CameraPermissionRequiredTest` | 카메라 권한 안내 문구와 버튼 (다시 요청 / 설정으로 이동) |
 | `AnalysisViewModelTest` | 분석 성공, 중복 요청 무시, 실패 후 재시도, 취소 |
 | `MockPhotoAnalyzerTest` | 결과 순서, 모든 결과에 임시 결과 표시 |
+| `RemotePhotoAnalyzerTest` | 서버 응답 → 앱 결과 변환, 가짜 HTTP 서버로 사진 업로드, 서버 오류 시 실패 처리 |
 | `ResultScreenTest` | 상태별 문구와 버튼, 결과에 든 근거만 표시, 임시 결과 안내 |
 
 갤러리(Photo Picker)와 카메라는 시스템 기능이라 단위 테스트에서는 결과를 직접 넣어 확인합니다. 실제 촬영과 권한 흐름은 에뮬레이터에서 확인했습니다.
 
 ## 아직 구현되지 않은 것
 
-- 실제 AI 분석 (현재는 `MockPhotoAnalyzer`)
+- 결과 화면에 서버의 판정 근거 이미지(색칠한 사진, 조감도) 표시 — 서버는 이미 보내 주지만 앱이 아직 안 씀
+- 실제 휴대폰·에뮬레이터에서 AI 서버와 연결한 확인 (단위 테스트는 가짜 서버로만 확인)
 - 홈 화면의 디자인된 일러스트 (현재는 아이콘으로 만든 임시 그림)
 - 출시용 빌드 설정 (코드 축소 미적용, 디버그 APK 약 24MB)
 

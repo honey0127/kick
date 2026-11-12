@@ -66,7 +66,7 @@ import com.example.safezone.ui.components.PrimaryButton
 import java.io.File
 
 /**
- * 킥보드 주차 상태를 직접 촬영하는 화면.
+ * 자전거 주차 상태를 직접 촬영하는 화면.
  * 카메라 권한이 있으면 미리보기와 촬영 버튼을, 없으면 권한 안내를 보여 준다.
  */
 @Composable
@@ -214,8 +214,8 @@ private fun CaptureGuide(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         listOf(
-            "킥보드 전체가 보이도록 촬영해 주세요.",
-            "주변 보행 공간도 함께 촬영해 주세요.",
+            "자전거 전체가 보이도록 촬영해 주세요.",
+            "2~3걸음 뒤에서 보도가 뻗은 방향으로, 양옆 보도까지 함께 촬영해 주세요.",
             "점자블록이나 출입구가 있다면 포함해 주세요.",
         ).forEach { guide ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -299,7 +299,7 @@ internal fun CameraPermissionRequired(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = if (canAskAgain) {
-                    "킥보드 주차 상태를 촬영하려면\n카메라 사용을 허용해 주세요."
+                    "자전거 주차 상태를 촬영하려면\n카메라 사용을 허용해 주세요."
                 } else {
                     "권한이 꺼져 있어요.\n설정 > 권한에서 카메라를 허용해 주세요."
                 },

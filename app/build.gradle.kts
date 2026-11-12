@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// AI 분석 서버 주소. 비어 있으면 UI 확인용 MockPhotoAnalyzer 를 쓴다.
+// PC마다 다르므로 local.properties 의 analysis.server.url 또는 -PanalysisServerUrl=... 로 지정한다.
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val analysisServerUrl: String = providers.gradleProperty("analysisServerUrl").orNull
+    ?: localProperties.getProperty("analysis.server.url", "")
 
 android {
     namespace = "com.example.safezone"
@@ -15,10 +25,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "ANALYSIS_SERVER_URL", "\"$analysisServerUrl\"")
     }
 
     buildTypes {
+        debug {
+            // 개발 중에는 PC의 http:// 서버(에뮬레이터에서 10.0.2.2)에 연결할 수 있게 평문 HTTP 허용
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -32,6 +48,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     testOptions {
         // Robolectric 테스트가 앱의 테마·리소스를 읽을 수 있게 한다.

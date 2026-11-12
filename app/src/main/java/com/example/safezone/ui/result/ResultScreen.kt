@@ -237,7 +237,7 @@ private fun ParkingStatus.style(): ResultStyle = when (this) {
         icon = Icons.Outlined.WarningAmber,
         color = MaterialTheme.colorScheme.error,
         title = "주차 위치를 확인해 주세요!",
-        description = "킥보드가 보행 공간을 침범하고 있을\n가능성이 있습니다.",
+        description = "자전거가 보행 공간을 침범하고 있을\n가능성이 있습니다.",
         buttonText = "다시 주차하기",
         buttonIcon = Icons.Outlined.Refresh,
     )
