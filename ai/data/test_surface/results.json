@@ -1,0 +1,45 @@
+{
+  "test_mask_map50": 0.842,
+  "test_mask_map50_95": 0.705,
+  "per_class_map50": {
+    "sidewalk": 0.818,
+    "road": 0.881,
+    "braille_block": 0.873,
+    "crosswalk": 0.796
+  },
+  "speed_ms": {
+    "preprocess": 0.3,
+    "inference": 9.6,
+    "loss": 0.0,
+    "postprocess": 2.2
+  },
+  "night": {
+    "status": "RETAKE",
+    "reasons": [
+      "NO_SIDEWALK"
+    ],
+    "metrics": {
+      "vehicle_count": 1,
+      "target_kind": "bicycle",
+      "target_conf": 0.746,
+      "ground_px": 0,
+      "road_overlap": 0.0,
+      "crosswalk_overlap": 0.0,
+      "braille_overlap": 0.0,
+      "sidewalk_frac": 0.0
+    },
+    "elapsed_ms": 189,
+    "scale": null
+  },
+  "scale_on_aihub": {
+    "n": 40,
+    "confidence": {
+      "high": 4,
+      "medium": 5,
+      "low": 2,
+      "none": 29
+    },
+    "mean_err_cm": 0.91,
+    "mean_tiles": 4.0
+  }
+}

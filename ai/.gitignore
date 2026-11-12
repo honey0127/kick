@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pem
+logs/
+
+# 데이터: AI Hub 원본·반납 사진은 재배포하지 않음 (결과 수치만 올림)
+data/*
+!data/test_surface/
+data/test_surface/*
+!data/test_surface/results.json
+
+# 모델: 사전학습 가중치는 자동 다운로드되므로 제외, 직접 학습한 것만 올림
+models/*.pt
+!models/kick_surface.pt
+
+# 학습 기록: 곡선·지표만 올리고 데이터 이미지가 들어간 배치 미리보기와 중복 가중치는 제외
+runs/*
+!runs/kick_surface/
+runs/kick_surface/weights/
+runs/kick_surface/*batch*.jpg
+runs/kick_surface/labels.jpg

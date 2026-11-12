@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>안주잘부 반납</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ① 위치 확인 -->
+  <section id="screen-home" class="screen active">
+    <header class="topbar"><h1>반납하기</h1><span id="model-badge" class="badge">AI 로딩 중…</span></header>
+    <div id="map"></div>
+    <div class="sheet">
+      <div class="steps"><span class="on">① 위치</span><span>② 사진</span><span>③ 결제</span></div>
+      <label class="field">기기 번호 <input id="vehicle-id" value="KB-0427"></label>
+      <p id="loc-msg" class="msg"></p>
+      <button id="btn-locate" class="primary">현재 위치에서 반납하기</button>
+      <details class="dev">
+        <summary>테스트 위치로 확인</summary>
+        <div id="dev-spots"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ② 주차 사진 촬영 -->
+  <section id="screen-camera" class="screen dark">
+    <div class="cam-head">
+      <svg width="56" height="44" viewBox="0 0 56 44" fill="none" stroke="#fff" stroke-width="3"><path d="M4 12h12l4-6h16l4 6h12v28H4z"/><circle cx="28" cy="25" r="8"/></svg>
+      <h2>주차 위치 촬영</h2>
+      <p>반납을 완료하려면 다음 사용자가 잘 찾을 수 있게<br>주변이 잘 보이도록 기기를 촬영해주세요.</p>
+    </div>
+    <div class="viewfinder">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="frame"></div>
+      <p id="cam-fallback" class="cam-fallback" hidden>이 브라우저에서는 실시간 카메라를 쓸 수 없어요.<br>아래 버튼으로 카메라 앱을 열어 촬영해주세요.</p>
+    </div>
+    <div class="cam-controls">
+      <button id="btn-torch" class="round-sq" aria-label="플래시">
+        <svg width="26" height="34" viewBox="0 0 26 34" fill="none" stroke="#222" stroke-width="2.4"><path d="M7 8h12l-2 7v17H9V15z"/><path d="M13 20v4M3 3l2 2M23 3l-2 2M13 0v3"/></svg>
+      </button>
+      <button id="btn-shutter" class="shutter" aria-label="촬영"></button>
+      <label class="round-sq file" aria-label="사진 선택">
+        <input id="file-input" type="file" accept="image/*" capture="environment" hidden>
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#222" stroke-width="2.4"><rect x="3" y="5" width="22" height="18" rx="2"/><path d="M3 19l6-6 5 5 4-4 7 7"/></svg>
+      </label>
+    </div>
+    <button id="btn-cam-back" class="text-btn">← 위치 다시 확인</button>
+  </section>
+
+  <!-- 판정 결과 -->
+  <section id="screen-result" class="screen">
+    <header class="topbar"><h1>사진 판정</h1></header>
+    <div class="result-body">
+      <div id="analyzing" class="analyzing"><div class="spinner"></div><p>AI가 주차 상태를 확인하고 있어요…</p></div>
+      <div id="result" hidden>
+        <div id="verdict" class="verdict"></div>
+        <div id="grade" class="grade" hidden></div>
+        <img id="overlay" alt="판정 근거 이미지">
+        <figure id="bev-wrap" class="bev" hidden>
+          <img id="bev" alt="조감도">
+          <figcaption>조감도 (점자블록 30cm 기준 실측) · 초록 선 = 병목 통행폭</figcaption>
+        </figure>
+        <p class="legend"><i style="--c:#50c850"></i>보도 <i style="--c:#e63c3c"></i>차도 <i style="--c:#1e8cff"></i>기기 <i style="--c:#ff8c00"></i>접지부 <i style="--c:#ffdc00"></i>점자블록 <span>흰 선 = 가장 많이 막힌 단면</span></p>
+        <ul id="reasons" class="reasons"></ul>
+        <dl id="metrics" class="metrics"></dl>
+      </div>
+    </div>
+    <div class="sheet">
+      <button id="btn-retake" class="secondary">다시 촬영</button>
+      <button id="btn-to-pay" class="primary" hidden>결제하기</button>
+    </div>
+  </section>
+
+  <!-- ③ 결제 -->
+  <section id="screen-pay" class="screen">
+    <header class="topbar"><h1>결제</h1></header>
+    <div class="pay-body">
+      <div class="steps"><span class="on">① 위치</span><span class="on">② 사진</span><span class="on">③ 결제</span></div>
+      <dl class="receipt">
+        <dt>기기</dt><dd id="pay-vehicle"></dd>
+        <dt>반납 위치</dt><dd id="pay-zone"></dd>
+        <dt>이용 요금</dt><dd>기본 1,200원 + 12분 × 180원</dd>
+        <dt>합계</dt><dd class="total">3,360원</dd>
+      </dl>
+      <p class="msg">데모 결제입니다. 실제 결제는 이뤄지지 않아요.</p>
+    </div>
+    <div class="sheet"><button id="btn-pay" class="primary">3,360원 결제하기</button></div>
+  </section>
+
+  <section id="screen-done" class="screen">
+    <div class="done">
+      <div class="check">✓</div>
+      <h2>반납 완료</h2>
+      <p id="done-msg"></p>
+      <button id="btn-restart" class="secondary">처음으로</button>
+    </div>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
