@@ -132,20 +132,34 @@ const METRIC_LABELS = {
   residual_cm: ["남은 통행폭 (병목)", (v) => `${v}cm (최소 120cm)`],
   original_cm: ["원래 보도 폭", (v) => `${v}cm`],
   reduced_cm: ["기기 때문에 줄어든 폭", (v) => `${v}cm`],
-  residual_cm_est: ["남은 통행폭 (차체 길이로 추정)", (v) => `약 ${v}cm`],
+  residual_cm_est: ["남은 통행폭 (자전거 길이로 환산, 참고용)", (v) => `약 ${v}cm`],
   score: ["침해 점수", (v) => `${v} / 100`],
   width_occupancy: ["보도 폭 점유율", (v) => `${Math.round(v * 100)}% (한도 60%)`],
   road_overlap: ["접지부 주변 차도 비율", (v) => `${Math.round(v * 100)}%`],
   braille_overlap: ["점자블록 비율", (v) => `${Math.round(v * 100)}%`],
   crosswalk_overlap: ["횡단보도 비율", (v) => `${Math.round(v * 100)}%`],
   sidewalk_frac: ["사진 속 보도 면적", (v) => `${Math.round(v * 100)}%`],
-  vehicle_count: ["인식된 기기 수", (v) => `${v}대`],
-  target_kind: ["대상 기기", (v) => v],
+  vehicle_count: ["인식된 자전거 수", (v) => `${v}대`],
+  target_kind: ["대상", (v) => KIND_LABELS[v] || v],
   scale_source: ["실측 기준", (v) => SCALE_LABELS[v] || v],
   elapsed_ms: ["분석 시간", (v) => `${v}ms`],
 };
-const SCALE_LABELS = { braille_seams: "점자블록 (이음매)", braille_tiles: "점자블록 (블록 단위)", none: "없음 — 비율만 판정" };
+const SCALE_LABELS = {
+  braille_seams: "점자블록 (이음매)",
+  braille_tiles: "점자블록 (블록 단위)",
+  none: "없음 — 비율만 판정",
+  "vehicle_length(추정)": "없음 — 비율만 판정 (자전거 길이 환산은 참고용)",
+};
 const CONF_LABELS = { high: "높음", medium: "보통", low: "낮음" };
+const KIND_LABELS = { bicycle: "자전거" };
+
+// cm 실측(등급 상자)이 없을 때 결과를 한 줄로 설명한다
+function summaryHtml(m) {
+  if (m.residual_cm !== undefined || m.width_occupancy === undefined) return "";
+  // 차체 길이 환산값(residual_cm_est)은 오차가 커서 여기 넣지 않고 '자세한 측정값'에만 참고용으로 둔다
+  return `자전거가 보도 폭의 약 <b>${Math.round(m.width_occupancy * 100)}%</b>를 차지해요.` +
+    "<small>점자블록이 보이지 않아 cm 대신 사진 속 비율로 판단한 추정값이에요.</small>";
+}
 
 async function submitPhoto(blob) {
   show("screen-result");
@@ -169,6 +183,9 @@ async function submitPhoto(blob) {
       g.innerHTML = `<b class="g-${r.metrics.grade}">${r.metrics.grade}</b><span class="cm">${r.metrics.residual_cm}cm</span>` +
         `<small>남은 통행폭<br>실측 신뢰도 ${CONF_LABELS[r.scale.confidence]} (블록 ${r.scale.n_tiles}장, 오차 ±${r.scale.err_cm}cm)</small>`;
     }
+    const sum = summaryHtml(r.metrics);
+    $("#summary").hidden = !sum;
+    $("#summary").innerHTML = sum;
     $("#bev-wrap").hidden = !r.bev_jpeg;
     if (r.bev_jpeg) $("#bev").src = "data:image/jpeg;base64," + r.bev_jpeg;
     $("#reasons").innerHTML = r.reasons.map((x) => `<li class="${x.status}">${x.message}</li>`).join("");
@@ -186,6 +203,7 @@ async function submitPhoto(blob) {
     $("#metrics").innerHTML = "";
     $("#overlay").removeAttribute("src");
     $("#grade").hidden = true;
+    $("#summary").hidden = true;
     $("#bev-wrap").hidden = true;
   } finally {
     $("#analyzing").hidden = true;

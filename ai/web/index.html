@@ -29,7 +29,13 @@
     <div class="cam-head">
       <svg width="56" height="44" viewBox="0 0 56 44" fill="none" stroke="#fff" stroke-width="3"><path d="M4 12h12l4-6h16l4 6h12v28H4z"/><circle cx="28" cy="25" r="8"/></svg>
       <h2>주차 위치 촬영</h2>
-      <p>반납을 완료하려면 다음 사용자가 잘 찾을 수 있게<br>주변이 잘 보이도록 기기를 촬영해주세요.</p>
+      <p>AI가 남은 통행폭을 잴 수 있게 이렇게 찍어주세요.</p>
+      <ul class="cam-tips">
+        <li>2~3걸음 뒤에서</li>
+        <li>보도가 뻗은 방향으로</li>
+        <li>자전거와 양옆 보도 끝까지</li>
+        <li>점자블록이 있으면 같이</li>
+      </ul>
     </div>
     <div class="viewfinder">
       <video id="video" playsinline muted autoplay></video>
@@ -57,14 +63,18 @@
       <div id="result" hidden>
         <div id="verdict" class="verdict"></div>
         <div id="grade" class="grade" hidden></div>
+        <p id="summary" class="summary" hidden></p>
         <img id="overlay" alt="판정 근거 이미지">
         <figure id="bev-wrap" class="bev" hidden>
           <img id="bev" alt="조감도">
           <figcaption>조감도 (점자블록 30cm 기준 실측) · 초록 선 = 병목 통행폭</figcaption>
         </figure>
-        <p class="legend"><i style="--c:#50c850"></i>보도 <i style="--c:#e63c3c"></i>차도 <i style="--c:#1e8cff"></i>기기 <i style="--c:#ff8c00"></i>접지부 <i style="--c:#ffdc00"></i>점자블록 <span>흰 선 = 가장 많이 막힌 단면</span></p>
+        <p class="legend"><i style="--c:#50c850"></i>보도 <i style="--c:#e63c3c"></i>차도 <i style="--c:#1e8cff"></i>자전거 <i style="--c:#ff8c00"></i>바닥 닿는 부분 <i style="--c:#ffdc00"></i>점자블록 <span>흰 선 = 가장 많이 막힌 곳</span></p>
         <ul id="reasons" class="reasons"></ul>
-        <dl id="metrics" class="metrics"></dl>
+        <details id="metrics-wrap" class="more">
+          <summary>자세한 측정값</summary>
+          <dl id="metrics" class="metrics"></dl>
+        </details>
       </div>
     </div>
     <div class="sheet">
