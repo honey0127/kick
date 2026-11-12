@@ -1,5 +1,6 @@
 package com.example.safezone.data.analysis
 
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.safezone.data.model.ParkingStatus
 import com.sun.net.httpserver.HttpServer
@@ -13,6 +14,7 @@ import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowLog
 import java.io.IOException
 import java.net.InetSocketAddress
 
@@ -97,5 +99,19 @@ class RemotePhotoAnalyzerTest {
         } catch (e: IOException) {
             assertTrue(e.message!!.contains("404"))
         }
+    }
+
+    @Test
+    fun failure_isWrittenToLogcat_withCause() = runTest {
+        responseCode = 404
+        responseBody = """{"detail":"Not Found"}"""
+        try {
+            analyzer().analyze("content://photo/1")
+        } catch (e: IOException) {
+            // 예외는 그대로 전달되어야 한다 (화면이 "다시 시도"를 보여 준다)
+        }
+        // 실패 원인이 Logcat("SafeZone" 태그)에 경고로 남아야 한다.
+        val logs = ShadowLog.getLogsForTag("SafeZone")
+        assertTrue(logs.any { it.type == Log.WARN && it.throwable?.message?.contains("404") == true })
     }
 }

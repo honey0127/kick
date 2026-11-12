@@ -1,7 +1,9 @@
 package com.example.safezone.data.analysis
 
+import android.util.Log
 import com.example.safezone.data.model.AnalysisResult
 import com.example.safezone.data.model.ParkingStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,6 +14,8 @@ import java.net.URL
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
+
+private const val TAG = "SafeZone"
 
 /**
  * AI 분석 서버(ai/ 폴더의 FastAPI)에 사진을 보내 판정을 받는다.
@@ -27,8 +31,18 @@ class RemotePhotoAnalyzer(
 ) : PhotoAnalyzer {
 
     override suspend fun analyze(photoUri: String): AnalysisResult = withContext(ioDispatcher) {
-        val photo = readPhoto(photoUri)
-        parseAnalysisResponse(upload(photo))
+        try {
+            val photo = readPhoto(photoUri)
+            parseAnalysisResponse(upload(photo))
+        } catch (e: CancellationException) {
+            // 사용자가 분석을 취소한 경우는 실패가 아니므로 기록하지 않는다.
+            throw e
+        } catch (e: Exception) {
+            // 화면에는 "분석하지 못했어요"만 보이므로, 원인(서버 꺼짐·주소 오류·404·응답 형식 등)을 Logcat 에 남긴다.
+            // Logcat 에서 "SafeZone" 으로 검색하면 볼 수 있다.
+            Log.w(TAG, "분석 서버 요청 실패: $serverUrl", e)
+            throw e
+        }
     }
 
     private fun upload(photo: ByteArray): String {
