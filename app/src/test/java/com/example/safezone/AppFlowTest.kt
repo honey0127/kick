@@ -3,6 +3,7 @@ package com.example.safezone
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -13,6 +14,9 @@ import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
 import coil3.test.FakeImage
 import coil3.test.FakeImageLoaderEngine
+import com.example.safezone.data.analysis.MockPhotoAnalyzer
+import com.example.safezone.navigation.AppNavigation
+import com.example.safezone.ui.theme.SafeZoneTheme
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -24,22 +28,31 @@ import org.robolectric.shadows.ShadowLooper
 /**
  * 핵심 사용자 흐름을 처음부터 끝까지 확인한다: 사진 선택 → 사진 확인 → 분석 진행 → 결과 확인.
  * 갤러리(Photo Picker)는 시스템 앱이라 테스트에서 열 수 없으므로, 사용자가 사진을 고른 결과를 직접 넣어 준다.
+ *
+ * 분석기는 항상 임시 분석기(MockPhotoAnalyzer)를 넣는다. MainActivity를 그대로 띄우면 PC에 설정한
+ * 분석 서버 주소(local.properties)에 따라 실제 서버로 요청을 보내게 되어, 테스트 결과가 PC마다 달라진다.
  */
 @OptIn(DelicateCoilApi::class)
 @RunWith(AndroidJUnit4::class)
 class AppFlowTest {
 
+    // 빈 Activity 위에 앱 화면(AppNavigation)을 직접 올린다.
     @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Before
-    fun useFakeImageLoader() {
+    fun setUp() {
         // Robolectric에서는 실제 사진을 디코딩하지 못해 미리보기가 "불러오지 못함" 상태가 되고 분석 버튼이 막힌다.
         // 어떤 사진이든 성공적으로 불러온 것처럼 가짜 이미지를 돌려주게 한다.
         val engine = FakeImageLoaderEngine.Builder().default(FakeImage()).build()
         SingletonImageLoader.setUnsafe(
             ImageLoader.Builder(composeRule.activity).components { add(engine) }.build(),
         )
+
+        val analyzer = MockPhotoAnalyzer()
+        composeRule.setContent {
+            SafeZoneTheme { AppNavigation(analyzer = analyzer) }
+        }
     }
 
     @After

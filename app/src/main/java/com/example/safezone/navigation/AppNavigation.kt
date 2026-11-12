@@ -61,14 +61,18 @@ private fun createPhotoAnalyzer(context: Context): PhotoAnalyzer {
     )
 }
 
+/**
+ * @param analyzer 사진 분석기. 앱에서는 비워 두면 서버 주소 설정에 따라 자동으로 고른다.
+ *   테스트에서는 여기에 임시 분석기를 직접 넣어, PC 의 서버 주소 설정(local.properties)과 무관하게 같은 결과가 나오게 한다.
+ */
 @Composable
-fun AppNavigation(modifier: Modifier = Modifier) {
+fun AppNavigation(modifier: Modifier = Modifier, analyzer: PhotoAnalyzer? = null) {
     val navController = rememberNavController()
 
     // 분석 화면과 결과 화면이 같은 결과를 보도록 Activity 범위의 ViewModel 하나를 함께 쓴다.
     val appContext = LocalContext.current.applicationContext
     val analysisViewModel: AnalysisViewModel = viewModel {
-        AnalysisViewModel(analyzer = createPhotoAnalyzer(appContext))
+        AnalysisViewModel(analyzer = analyzer ?: createPhotoAnalyzer(appContext))
     }
 
     // 결과 화면에서 다시 찍으러 갈 때: 홈 위에 촬영 화면만 남긴다.
