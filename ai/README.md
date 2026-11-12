@@ -66,6 +66,7 @@ KICK_DEV=1 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port
 | 환경변수 | 기본값 | 뜻 |
 |---|---|---|
 | `KICK_DEV` | `0` | 개발용 기능 켜기 |
+| `KICK_OPEN_ANALYZE` | `0` | 세션 없는 `/api/analyze` 만 열기 (안드로이드 앱이 쓰는 API, 테스트 위치 버튼은 계속 숨김) |
 | `KICK_MAX_UPLOAD_MB` | `15` | 사진 업로드 최대 크기 (넘으면 413) |
 | `KICK_MAX_PHOTO_ATTEMPTS` | `10` | 반납 세션 하나에서 사진 판정 최대 횟수 (넘으면 429, 위치 확인부터 다시) |
 | `KICK_SAVE_UPLOADS` | `1` | 반납 사진 저장 (EXIF 를 지우고 다시 인코딩해 저장) |

@@ -32,3 +32,5 @@ MAX_PHOTO_ATTEMPTS = int(os.getenv("KICK_MAX_PHOTO_ATTEMPTS", "10"))  # 세션 �
 
 # 1이면 개발용 기능을 켠다: 세션 없는 /api/analyze, 웹 화면의 '테스트 위치로 확인'(GPS 없이 위치 지정)
 DEV_MODE = os.getenv("KICK_DEV", "0") == "1"
+# 1이면 세션 없이 사진만 판정하는 /api/analyze 를 연다 (GPS 단계가 없는 안드로이드 'Safe Zone' 앱용)
+OPEN_ANALYZE = os.getenv("KICK_OPEN_ANALYZE", "0") == "1"

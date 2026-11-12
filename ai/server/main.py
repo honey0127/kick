@@ -164,8 +164,8 @@ def pay(body: TokenIn):
 
 @app.post("/api/analyze")
 async def analyze_only(file: UploadFile = File(...)):
-    """개발용: 세션 없이 사진만 판정 (KICK_DEV=1 일 때만)."""
-    if not config.DEV_MODE:
+    """세션 없이 사진만 판정 (KICK_DEV=1 또는 KICK_OPEN_ANALYZE=1 일 때만)."""
+    if not (config.DEV_MODE or config.OPEN_ANALYZE):
         raise HTTPException(404, "Not Found")
     img = _decode(await _read_upload(file))
     return await run_in_threadpool(get_analyzer().analyze, img)

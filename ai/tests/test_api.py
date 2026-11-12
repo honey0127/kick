@@ -79,8 +79,17 @@ def test_saved_photo_has_no_exif(client, monkeypatch, tmp_path):
     assert len(saved) == 1 and b"Exif" not in saved[0].read_bytes()
 
 
+def test_open_analyze_without_dev_mode(client, monkeypatch):
+    monkeypatch.setattr(main.config, "DEV_MODE", False)
+    monkeypatch.setattr(main.config, "OPEN_ANALYZE", True)
+    monkeypatch.setattr(main, "get_analyzer", lambda: FakeAnalyzer("REJECT"))
+    assert client.get("/api/config").json() == {"dev": False}  # 테스트 위치 버튼은 계속 숨김
+    assert client.post("/api/analyze", files={"file": ("p.jpg", JPG, "image/jpeg")}).json()["status"] == "REJECT"
+
+
 def test_dev_endpoints_off_by_default(client, monkeypatch):
     monkeypatch.setattr(main.config, "DEV_MODE", False)
+    monkeypatch.setattr(main.config, "OPEN_ANALYZE", False)
     assert client.get("/api/config").json() == {"dev": False}
     assert client.post("/api/analyze", files={"file": ("p.jpg", JPG, "image/jpeg")}).status_code == 404
 
