@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import base64
+import threading
 import time
 
 import cv2
@@ -62,6 +63,8 @@ class Analyzer:
 
         self.th = thresholds or Thresholds()
         self.device = _device()
+        # Ultralytics 모델은 스레드 안전하지 않아서, 스레드풀에서 동시에 들어온 요청은 인식 단계만 하나씩 처리한다
+        self._infer_lock = threading.Lock()
         self.custom = YOLO(str(config.CUSTOM_WEIGHTS)) if config.CUSTOM_WEIGHTS.exists() else None
         self.surface = YOLO(str(config.SURFACE_WEIGHTS)) if config.SURFACE_WEIGHTS.exists() else None
         self.coco = None if self.custom else YOLO(config.BASELINE_YOLO)
@@ -153,7 +156,8 @@ class Analyzer:
     def analyze(self, img: np.ndarray) -> dict:
         t0 = time.time()
         img = resize_max(img, config.MAX_SIDE)
-        scene = self.perceive(img)
+        with self._infer_lock:
+            scene = self.perceive(img)
         return analyze_scene(img, scene, self.th) | {"backend": self.backend, "elapsed_ms": int((time.time() - t0) * 1000)}
 
 
