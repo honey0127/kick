@@ -5,11 +5,10 @@ train: images/train
 val: images/val
 
 names:
-  0: kickboard        # 서 있는 전동킥보드
-  1: ebike            # 서 있는 전기자전거
-  2: fallen_vehicle   # 넘어진 킥보드/자전거
-  3: sidewalk         # 보도면 (보행 가능한 바닥)
-  4: road             # 차도
-  5: braille_block    # 점자블록 (선형·점형 모두)
-  6: crosswalk        # 횡단보도 (진입부 포함)
-  7: braille_tile     # (선택) 점자블록 한 장씩 - 라벨하면 cm 실측이 더 정확해짐. 안 해도 braille_block 띠의 이음매로 실측함
+  0: bicycle          # 서 있는 자전거 (일반·전기자전거 모두)
+  1: fallen_bicycle   # 넘어진 자전거
+  2: sidewalk         # 보도면 (보행 가능한 바닥)
+  3: road             # 차도
+  4: braille_block    # 점자블록 (선형·점형 모두)
+  5: crosswalk        # 횡단보도 (진입부 포함)
+  6: braille_tile     # (선택) 점자블록 한 장씩 - 라벨하면 cm 실측이 더 정확해짐. 안 해도 braille_block 띠의 이음매로 실측함

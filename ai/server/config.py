@@ -9,7 +9,7 @@ DATA_DIR = ROOT / "data"
 CUSTOM_WEIGHTS = Path(os.getenv("KICK_WEIGHTS", MODELS_DIR / "kick_seg.pt"))
 # 바닥 전용 모델 (AI Hub 인도보행 Surface 로 학습: sidewalk/road/braille_block/crosswalk). 있으면 SegFormer 대신 사용.
 SURFACE_WEIGHTS = Path(os.getenv("KICK_SURFACE_WEIGHTS", MODELS_DIR / "kick_surface.pt"))
-# 베이스라인: COCO 사전학습 YOLO-seg (bicycle/motorcycle) + Cityscapes SegFormer (road/sidewalk)
+# 베이스라인: COCO 사전학습 YOLO-seg (bicycle) + Cityscapes SegFormer (road/sidewalk)
 BASELINE_YOLO = os.getenv("KICK_BASELINE_YOLO", str(MODELS_DIR / "yolo11s-seg.pt"))
 SEGFORMER = os.getenv("KICK_SEGFORMER", "nvidia/segformer-b2-finetuned-cityscapes-1024-1024")
 DEVICE = os.getenv("KICK_DEVICE", "")  # "" = 자동(cuda 있으면 cuda)

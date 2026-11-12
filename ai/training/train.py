@@ -74,7 +74,7 @@ def _finish(args, tmp):
     shutil.copy2(best, ROOT / "models" / args.out)
     print(f"\n완료: {best} -> models/{args.out} (서버 재시작하면 적용)")
     metrics = YOLO(best).val(data=str(tmp), imgsz=args.imgsz, device=args.device, verbose=False)
-    print(f"mask mAP50 = {metrics.seg.map50:.3f}  (목표: 킥보드 0.85 이상)")
+    print(f"mask mAP50 = {metrics.seg.map50:.3f}  (목표: 자전거 0.85 이상)")
 
 
 if __name__ == "__main__":

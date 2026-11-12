@@ -3,7 +3,7 @@
 원본(CVAT XML, 1920x1080 보행자 시점)의 바닥 폴리곤을 우리 클래스로 바꾼다.
   sidewalk(전부)                       -> sidewalk
   braille_guide_blocks(전부)           -> braille_block
-  roadway·alley·bike_lane (normal 등)  -> road      (킥보드를 세우면 안 되는 곳)
+  roadway·alley·bike_lane (normal 등)  -> road      (자전거를 세우면 안 되는 곳)
   roadway·alley 의 attribute=crosswalk -> crosswalk
   caution_zone(맨홀·가로수 구역 등)     -> 제외
 

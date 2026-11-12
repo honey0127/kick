@@ -27,7 +27,7 @@ GRADES = ("위험", "경고", "주의", "양호")
 @dataclass
 class Vehicle:
     mask: np.ndarray  # bool HxW
-    kind: str = "kickboard"
+    kind: str = "bicycle"
     conf: float = 1.0
     fallen: bool = False
 
@@ -77,7 +77,7 @@ class Thresholds:
     bev_half_across_cm: float = 500
     bev_half_along_cm: float = 300
     section_step_cm: float = 10  # 단면 간격
-    vehicle_length_cm: dict = field(default_factory=lambda: {"kickboard": 115, "ebike": 165, "bicycle": 165})
+    vehicle_length_cm: dict = field(default_factory=lambda: {"bicycle": 165})
 
 
 @dataclass
@@ -105,7 +105,7 @@ class Verdict:
 
 
 MESSAGES = {
-    "NO_VEHICLE": (RETAKE, "킥보드/자전거가 보이지 않아요. 기기 전체가 파란 틀 안에 들어오게 찍어주세요."),
+    "NO_VEHICLE": (RETAKE, "자전거가 보이지 않아요. 자전거 전체가 파란 틀 안에 들어오게 찍어주세요."),
     "NO_SIDEWALK": (RETAKE, "주변 바닥이 잘 보이지 않아요. 한 걸음 물러나 주변이 보이게 찍어주세요."),
     "TRUNCATED": (RETAKE, "보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요. 뒤로 물러나 보도 전체가 보이게 찍어주세요."),
     "FALLEN": (REJECT, "기기가 넘어져 있어요. 똑바로 세운 뒤 다시 찍어주세요."),

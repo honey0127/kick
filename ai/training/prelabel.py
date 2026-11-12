@@ -1,10 +1,11 @@
 """사전 라벨 생성: 베이스라인 AI 가 먼저 마스크를 그려서 YOLO-seg 라벨(.txt)로 저장.
 CVAT / Roboflow 에 이미지와 함께 올려서 '고치기만' 하면 되므로 라벨링 시간이 크게 줄어든다.
 
-  python training/prelabel.py data/raw --vehicle-class ebike
+  python training/prelabel.py data/raw
   -> data/prelabels/images/*.jpg, data/prelabels/labels/*.txt
 
-킥보드·점자블록·횡단보도는 베이스라인이 못 그리므로 라벨링 툴에서 직접 추가해야 한다.
+자전거는 COCO 모델이 그려 주지만, 넘어진 자전거는 직접 fallen_bicycle 로 바꿔야 한다.
+점자블록·횡단보도는 베이스라인이 못 그리므로 라벨링 툴에서 직접 추가해야 한다.
 """
 import argparse
 import shutil
@@ -40,7 +41,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src", type=Path, help="원본 사진 폴더")
     ap.add_argument("--out", type=Path, default=ROOT / "data" / "prelabels")
-    ap.add_argument("--vehicle-class", default="ebike", choices=["kickboard", "ebike"], help="인식된 기기를 어느 클래스로 넣을지")
     args = ap.parse_args()
 
     names = yaml.safe_load((ROOT / "training" / "dataset.yaml").read_text(encoding="utf-8"))["names"]
@@ -63,7 +63,7 @@ def main():
         scene = an.perceive(img)
         min_area = img.shape[0] * img.shape[1] * 0.002
         lines = []
-        layers = [(cid[args.vehicle_class], v.mask) for v in scene.vehicles]
+        layers = [(cid["bicycle"], v.mask) for v in scene.vehicles]
         layers += [(cid["sidewalk"], scene.sidewalk), (cid["road"], scene.road)]
         for c, mask in layers:
             for poly in mask_to_polygons(mask, min_area):

@@ -1,10 +1,10 @@
 """사진 -> 마스크(Scene) -> 판정(Verdict).
 
 모델 구성
-  1) models/kick_seg.pt 가 있으면: 직접 학습한 YOLO-seg 하나로 기기·보도·차도·점자블록·횡단보도 전부 인식
-     (학습 데이터에 sidewalk/road 클래스가 없으면 그 부분만 SegFormer로 보충)
-  2) 없으면 베이스라인: COCO YOLO-seg(bicycle/motorcycle) + Cityscapes SegFormer(road/sidewalk)
-     -> 학습 없이 바로 돌려볼 수 있지만 킥보드·점자블록·횡단보도는 인식 못 함
+  1) models/kick_seg.pt 가 있으면: 직접 학습한 YOLO-seg 하나로 자전거·보도·차도·점자블록·횡단보도 전부 인식
+     (학습 데이터에 sidewalk/road 클래스가 없으면 그 부분만 바닥 모델/SegFormer로 보충)
+  2) 없으면: COCO YOLO-seg 의 bicycle 클래스로 자전거 인식 (학습 없이 바로 사용)
+     바닥은 models/kick_surface.pt, 그것도 없으면 Cityscapes SegFormer
 """
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from .ground import detect_braille_by_color, estimate_ground_scale
 from .rules import APPROVE, REJECT, Scene, Thresholds, Vehicle, bottom_part, judge
 
 # 학습 데이터셋 클래스 (training/dataset.yaml 과 같아야 함)
-VEHICLE_CLASSES = {"kickboard", "ebike", "fallen_vehicle"}
+VEHICLE_CLASSES = {"bicycle", "fallen_bicycle"}
 STUFF_CLASSES = {"sidewalk", "road", "braille_block", "crosswalk"}
 TILE_CLASS = "braille_tile"  # 점자블록 한 장 (선택 라벨, 실측 정확도↑)
-COCO_VEHICLES = {1: "bicycle", 3: "motorcycle"}
-CITYSCAPES = {"road": 0, "sidewalk": 1, "motorcycle": 17, "bicycle": 18}
+COCO_VEHICLES = {1: "bicycle"}
+CITYSCAPES = {"road": 0, "sidewalk": 1, "bicycle": 18}
 
 
 def _device() -> str:
@@ -99,7 +99,7 @@ class Analyzer:
         if self.custom:
             for name, conf, mask in self._yolo_instances(self.custom, img):
                 if name in VEHICLE_CLASSES:
-                    vehicles.append(Vehicle(mask, kind=name, conf=conf, fallen=name == "fallen_vehicle"))
+                    vehicles.append(Vehicle(mask, kind="bicycle", conf=conf, fallen=name == "fallen_bicycle"))
                 elif name == TILE_CLASS:
                     tiles.append(mask)
                     stuff["braille_block"] |= mask
@@ -118,8 +118,8 @@ class Analyzer:
             lab = self.segformer(img)
             stuff["road"] |= lab == CITYSCAPES["road"]
             stuff["sidewalk"] |= lab == CITYSCAPES["sidewalk"]
-            if not vehicles:  # YOLO가 놓쳤으면 SegFormer의 자전거/오토바이 픽셀 중 가장 큰 덩어리
-                vehicles = self._largest_blob(np.isin(lab, [CITYSCAPES["bicycle"], CITYSCAPES["motorcycle"]]))
+            if not vehicles:  # YOLO가 놓쳤으면 SegFormer의 자전거 픽셀 중 가장 큰 덩어리
+                vehicles = self._largest_blob(lab == CITYSCAPES["bicycle"])
 
         # 기기 픽셀은 바닥 클래스에서 뺀다
         veh_any = np.zeros((h, w), bool)
@@ -147,7 +147,7 @@ class Analyzer:
         if n <= 1:
             return []
         i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        return [Vehicle(labels == i, kind="bicycle(seg)", conf=0.5)]
+        return [Vehicle(labels == i, kind="bicycle", conf=0.5)]
 
     # ---------- 전체 파이프라인 ----------
     def analyze(self, img: np.ndarray) -> dict:

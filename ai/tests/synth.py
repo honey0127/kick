@@ -82,7 +82,7 @@ def make_scene(boxes, seed=0):
         m = np.zeros((IMG_H, IMG_W), np.uint8)
         cv2.fillConvexPoly(m, cv2.convexHull(p.astype(np.float32)).astype(np.int32), 1)
         m = m.astype(bool)
-        vehicles.append(Vehicle(m, kind="kickboard"))
+        vehicles.append(Vehicle(m, kind="bicycle"))
         veh_any |= m
     img[veh_any] = (90, 60, 40)
     scene = Scene(
