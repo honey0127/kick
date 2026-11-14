@@ -90,7 +90,9 @@ fun parseAnalysisResponse(json: String): AnalysisResult {
         else -> throw IOException("알 수 없는 판정: $s")
     }
     val findings = mutableListOf<String>()
-    root.optJSONObject("metrics")?.let { m ->
+    // 판단 보류(RETAKE)는 서버가 "이 사진으로는 폭을 믿을 수 없다"고 한 경우라, 측정값을 근거로 내세우지 않는다.
+    val metrics = if (status == ParkingStatus.UNCERTAIN) null else root.optJSONObject("metrics")
+    metrics?.let { m ->
         when {
             m.has("residual_cm") ->
                 findings += "남은 통행폭 약 ${String.format(Locale.ROOT, "%.1f", m.getDouble("residual_cm") / 100)}m (점자블록 기준 실측)"

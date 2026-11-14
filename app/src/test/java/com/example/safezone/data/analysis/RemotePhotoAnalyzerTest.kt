@@ -114,4 +114,15 @@ class RemotePhotoAnalyzerTest {
         val logs = ShadowLog.getLogsForTag("SafeZone")
         assertTrue(logs.any { it.type == Log.WARN && it.throwable?.message?.contains("404") == true })
     }
+
+    @Test
+    fun retake_doesNotShowMeasurementAsEvidence() {
+        // 서버가 "폭을 판단할 수 없다"고 한 경우, 믿을 수 없는 측정값을 근거로 내세우지 않는다.
+        val r = parseAnalysisResponse(
+            """{"status":"RETAKE","metrics":{"width_occupancy":0.781,"truncated":true},
+               "reasons":[{"code":"TRUNCATED","status":"RETAKE","message":"보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요."}]}""",
+        )
+        assertEquals(ParkingStatus.UNCERTAIN, r.status)
+        assertEquals(listOf("보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요."), r.findings)
+    }
 }
