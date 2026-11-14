@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.PedalBike
+import androidx.compose.material.icons.outlined.ElectricScooter
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
@@ -77,7 +77,7 @@ fun HomeScreen(
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "자전거 주차 사진을 확인하고 보행 공간을 지켜보세요.",
+            text = "킥보드 주차 사진을 확인하고 보행 공간을 지켜보세요.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -89,7 +89,7 @@ fun HomeScreen(
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            ParkedBicycleIllustration(
+            ParkedScooterIllustration(
                 // 남는 높이를 채우되 최대 220dp까지만 (작은 화면에서는 줄어든다)
                 modifier = Modifier
                     .fillMaxWidth()
@@ -114,11 +114,11 @@ fun HomeScreen(
 }
 
 /**
- * 임시 일러스트: 자전거가 바르게 주차된 모습을 아이콘으로 표현한다.
+ * 임시 일러스트: 킥보드가 바르게 주차된 모습을 아이콘으로 표현한다.
  * 디자인된 이미지가 준비되면 이 함수만 교체한다.
  */
 @Composable
-private fun ParkedBicycleIllustration(modifier: Modifier = Modifier) {
+private fun ParkedScooterIllustration(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .padding(vertical = 24.dp)
@@ -127,7 +127,7 @@ private fun ParkedBicycleIllustration(modifier: Modifier = Modifier) {
     ) {
         Box {
             Icon(
-                imageVector = Icons.Outlined.PedalBike,
+                imageVector = Icons.Outlined.ElectricScooter,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(96.dp),

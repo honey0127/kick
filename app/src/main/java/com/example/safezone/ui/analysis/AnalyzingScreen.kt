@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.PedalBike
+import androidx.compose.material.icons.outlined.ElectricScooter
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -65,7 +65,7 @@ fun AnalyzingScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Description("일시적인 문제가 생겼어요.\n잠시 후 다시 시도해 주세요.")
                 } else {
-                    StatusIcon(icon = Icons.Outlined.PedalBike, showProgress = true)
+                    StatusIcon(icon = Icons.Outlined.ElectricScooter, showProgress = true)
                     Spacer(modifier = Modifier.height(28.dp))
                     Title("주차 상태를 확인하고 있어요.")
                     Spacer(modifier = Modifier.height(12.dp))

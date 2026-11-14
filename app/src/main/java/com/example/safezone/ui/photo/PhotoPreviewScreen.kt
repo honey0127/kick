@@ -107,7 +107,7 @@ fun PhotoPreviewScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "사진에 자전거와 주변 보행 공간이 잘 보이는지 확인해 주세요.",
+                text = "사진에 킥보드와 주변 보행 공간이 잘 보이는지 확인해 주세요.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -73,9 +73,9 @@ class RemotePhotoAnalyzerTest {
 
     @Test
     fun retake_becomesUncertain() {
-        val r = parseAnalysisResponse("""{"status":"RETAKE","metrics":{},"reasons":[{"message":"자전거가 보이지 않아요."}]}""")
+        val r = parseAnalysisResponse("""{"status":"RETAKE","metrics":{},"reasons":[{"message":"킥보드가 보이지 않아요."}]}""")
         assertEquals(ParkingStatus.UNCERTAIN, r.status)
-        assertEquals(listOf("자전거가 보이지 않아요."), r.findings)
+        assertEquals(listOf("킥보드가 보이지 않아요."), r.findings)
     }
 
     @Test

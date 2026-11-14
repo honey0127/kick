@@ -39,7 +39,7 @@ class MainActivityTest {
         composeRule.onNodeWithText("사진 촬영하기").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("자전거 전체가 보이도록 촬영해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("킥보드 전체가 보이도록 촬영해 주세요.").assertIsDisplayed()
         composeRule.onNodeWithText("2~3걸음 뒤에서 보도가 뻗은 방향으로, 양옆 보도까지 함께 촬영해 주세요.").assertIsDisplayed()
         composeRule.onNodeWithText("점자블록이나 출입구가 있다면 포함해 주세요.").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("사진 촬영").assertIsDisplayed()
