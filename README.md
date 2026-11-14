@@ -53,6 +53,7 @@
 ### 결과 (`ResultScreen`)
 - SAFE / UNSAFE / UNCERTAIN을 한 화면에서 아이콘, 색, 문구, 버튼으로 구분
 - 분석 근거 카드: 분석 결과에 들어 있는 항목만 표시하고, 근거가 없으면 카드를 표시하지 않음
+- 판정 근거 이미지 카드: AI 서버가 보내 준 그림(AI가 인식한 영역을 색칠한 사진, 위에서 내려다본 그림)을 색 설명과 함께 표시. 임시 결과에는 없음
 - 임시 결과(Mock)는 화면 맨 위에 "테스트용 임시 결과예요. 실제 AI 분석이 아닙니다." 안내
 
 ### 공통
@@ -92,6 +93,7 @@ analysis.server.url=http://10.0.2.2:8000
 **판정 변환**: 서버 `APPROVE / REJECT / RETAKE` → 앱 `SAFE / UNSAFE / UNCERTAIN`.
 분석 근거에는 서버가 실제로 잰 값(남은 통행폭 또는 보도 폭 점유율)과 서버가 돌려준 사유 문구만 넣습니다.
 판단 보류(`RETAKE`)는 서버가 폭을 믿을 수 없다고 한 경우라, 잰 값은 빼고 사유 문구만 보여 줍니다.
+서버가 보낸 근거 이미지(`overlay_jpeg`, `bev_jpeg`)는 결과 화면의 "판정 근거 이미지" 카드에 표시합니다.
 
 ## 프로젝트 구조
 
@@ -100,7 +102,7 @@ app/src/main/java/com/example/safezone/
 ├── MainActivity.kt
 ├── navigation/AppNavigation.kt      화면 경로, 화면 이동, 사용할 분석기 지정
 ├── data/
-│   ├── model/AnalysisResult.kt      결과 상태(SAFE/UNSAFE/UNCERTAIN), 근거, 임시 결과 여부
+│   ├── model/AnalysisResult.kt      결과 상태(SAFE/UNSAFE/UNCERTAIN), 근거, 근거 이미지, 임시 결과 여부
 │   └── analysis/
 │       ├── PhotoAnalyzer.kt         분석기 인터페이스
 │       ├── RemotePhotoAnalyzer.kt   AI 서버에 사진을 보내는 분석기, 응답 변환
@@ -162,8 +164,8 @@ sdk.dir=C\:\\Users\\<사용자>\\AppData\\Local\\Android\\Sdk
 | `CameraPermissionRequiredTest` | 카메라 권한 안내 문구와 버튼 (다시 요청 / 설정으로 이동) |
 | `AnalysisViewModelTest` | 분석 성공, 중복 요청 무시, 실패 후 재시도, 취소 |
 | `MockPhotoAnalyzerTest` | 결과 순서, 모든 결과에 임시 결과 표시 |
-| `RemotePhotoAnalyzerTest` | 서버 응답 → 앱 결과 변환, 가짜 HTTP 서버로 사진 업로드, 서버 오류 시 실패 처리 |
-| `ResultScreenTest` | 상태별 문구와 버튼, 결과에 든 근거만 표시, 임시 결과 안내 |
+| `RemotePhotoAnalyzerTest` | 서버 응답 → 앱 결과 변환(근거 이미지 포함), 가짜 HTTP 서버로 사진 업로드, 서버 오류 시 실패 처리와 원인 기록 |
+| `ResultScreenTest` | 상태별 문구와 버튼, 결과에 든 근거만 표시, 근거 이미지 카드, 임시 결과 안내 |
 
 갤러리(Photo Picker)와 카메라는 시스템 기능이라 단위 테스트에서는 결과를 직접 넣어 확인합니다. 실제 촬영과 권한 흐름은 에뮬레이터에서 확인했습니다.
 

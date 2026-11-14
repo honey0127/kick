@@ -32,12 +32,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.example.safezone.data.model.AnalysisResult
+import com.example.safezone.data.model.EvidenceImage
+import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
 import com.example.safezone.ui.components.PrimaryButton
 import com.example.safezone.ui.theme.SafeZoneTheme
@@ -130,10 +135,16 @@ fun ResultScreen(
                 Spacer(modifier = Modifier.height(32.dp))
                 FindingsCard(findings = result.findings, accent = style.color)
             }
+
+            // ⑥ 판정 근거 이미지: 분석 서버가 보내 준 경우에만 표시한다. 임시 분석기 결과에는 없다.
+            if (result.evidenceImages.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(if (result.findings.isNotEmpty()) 16.dp else 32.dp))
+                EvidenceImagesCard(images = result.evidenceImages)
+            }
             Spacer(modifier = Modifier.height(24.dp))
         }
 
-        // ⑥ 하단 버튼
+        // ⑦ 하단 버튼
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -211,6 +222,68 @@ private fun FindingsCard(findings: List<String>, accent: Color) {
             }
         }
     }
+}
+
+/** 분석 서버가 보내 준 판정 근거 이미지. 왜 이런 판정이 나왔는지 사용자가 눈으로 확인할 수 있게 한다. */
+@Composable
+private fun EvidenceImagesCard(images: List<EvidenceImage>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = "판정 근거 이미지",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        images.forEach { image ->
+            val caption = image.kind.caption()
+            Text(
+                text = caption.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            // Coil 이 JPEG 바이트를 화면 스레드 밖에서 디코딩한다. 폭은 카드에 맞추고 높이는 원본 비율을 따른다.
+            AsyncImage(
+                model = image.jpeg,
+                contentDescription = caption.imageDescription,
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+            Text(
+                text = caption.legend,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 근거 이미지 한 장에 붙이는 설명. */
+private data class EvidenceCaption(
+    val title: String,
+    /** 화면 낭독기(TalkBack)가 이미지 대신 읽어 주는 문장 */
+    val imageDescription: String,
+    /** 색이 무엇을 뜻하는지. 분석 서버(ai/server)가 그림을 그릴 때 쓰는 색과 같아야 한다. */
+    val legend: String,
+)
+
+private fun EvidenceImageKind.caption(): EvidenceCaption = when (this) {
+    EvidenceImageKind.OVERLAY -> EvidenceCaption(
+        title = "AI가 인식한 영역",
+        imageDescription = "AI가 인식한 영역을 색으로 표시한 사진",
+        legend = "초록: 보도 · 빨강: 차도 · 노랑: 점자블록 · 파랑: 주차한 기기 · 주황: 바닥에 닿는 부분",
+    )
+    EvidenceImageKind.BIRDS_EYE -> EvidenceCaption(
+        title = "위에서 내려다본 모습",
+        imageDescription = "위에서 내려다본 그림",
+        legend = "초록 선: 지나갈 수 있는 폭 · 파랑: 주차한 기기 · 노랑: 점자블록",
+    )
 }
 
 /** 상태별 화면 구성 값 (명세서 4-5). */

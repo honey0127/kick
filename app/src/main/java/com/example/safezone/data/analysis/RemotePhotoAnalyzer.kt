@@ -1,7 +1,10 @@
 package com.example.safezone.data.analysis
 
+import android.util.Base64
 import android.util.Log
 import com.example.safezone.data.model.AnalysisResult
+import com.example.safezone.data.model.EvidenceImage
+import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -79,7 +82,7 @@ class RemotePhotoAnalyzer(
 /**
  * 서버 응답 JSON -> 앱 결과.
  * APPROVE/REJECT/RETAKE 를 SAFE/UNSAFE/UNCERTAIN 으로 바꾸고,
- * 근거는 서버가 실제로 돌려준 측정값과 사유 문구만 쓴다.
+ * 근거는 서버가 실제로 돌려준 측정값과 사유 문구, 근거 이미지만 쓴다.
  */
 fun parseAnalysisResponse(json: String): AnalysisResult {
     val root = JSONObject(json)
@@ -105,5 +108,23 @@ fun parseAnalysisResponse(json: String): AnalysisResult {
             reasons.getJSONObject(i).optString("message").takeIf { it.isNotBlank() }?.let { findings += it }
         }
     }
-    return AnalysisResult(status = status, findings = findings, isMock = false)
+    // 근거 이미지: 색칠한 사진은 항상, 조감도는 점자블록으로 실측했을 때만 온다.
+    val evidenceImages = listOfNotNull(
+        root.jpegOrNull("overlay_jpeg")?.let { EvidenceImage(EvidenceImageKind.OVERLAY, it) },
+        root.jpegOrNull("bev_jpeg")?.let { EvidenceImage(EvidenceImageKind.BIRDS_EYE, it) },
+    )
+    return AnalysisResult(status = status, findings = findings, isMock = false, evidenceImages = evidenceImages)
+}
+
+/**
+ * base64 글자로 온 JPEG 를 파일 내용(바이트)으로 되돌린다.
+ * 값이 없거나 깨져 있으면 null 을 돌려준다. 근거 이미지가 없어도 판정 결과는 보여 줄 수 있어야 하기 때문이다.
+ */
+private fun JSONObject.jpegOrNull(key: String): ByteArray? {
+    if (isNull(key)) return null // 항목이 없거나 값이 null
+    return try {
+        Base64.decode(getString(key), Base64.DEFAULT).takeIf { it.isNotEmpty() }
+    } catch (e: IllegalArgumentException) {
+        null // base64 형식이 아님
+    }
 }

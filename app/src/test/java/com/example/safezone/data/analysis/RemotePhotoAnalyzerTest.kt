@@ -2,11 +2,13 @@ package com.example.safezone.data.analysis
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -124,5 +126,30 @@ class RemotePhotoAnalyzerTest {
         )
         assertEquals(ParkingStatus.UNCERTAIN, r.status)
         assertEquals(listOf("보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요."), r.findings)
+    }
+
+    @Test
+    fun evidenceImages_areDecoded_overlayFirstThenBirdsEye() {
+        // base64 "AQID" = 바이트 1,2,3 / "BAU=" = 바이트 4,5
+        val r = parseAnalysisResponse(
+            """{"status":"APPROVE","metrics":{},"reasons":[],"overlay_jpeg":"AQID","bev_jpeg":"BAU="}""",
+        )
+        assertEquals(listOf(EvidenceImageKind.OVERLAY, EvidenceImageKind.BIRDS_EYE), r.evidenceImages.map { it.kind })
+        assertArrayEquals(byteArrayOf(1, 2, 3), r.evidenceImages[0].jpeg)
+        assertArrayEquals(byteArrayOf(4, 5), r.evidenceImages[1].jpeg)
+    }
+
+    @Test
+    fun missingOrBrokenEvidenceImage_isSkipped_verdictStillShown() {
+        // 조감도는 실측하지 못하면 null 로 온다.
+        val onlyOverlay = parseAnalysisResponse("""{"status":"REJECT","reasons":[],"overlay_jpeg":"AQID","bev_jpeg":null}""")
+        assertEquals(listOf(EvidenceImageKind.OVERLAY), onlyOverlay.evidenceImages.map { it.kind })
+
+        // 근거 이미지가 깨져 있거나 아예 없어도 판정 결과는 그대로 보여 준다.
+        val broken = parseAnalysisResponse("""{"status":"REJECT","reasons":[],"overlay_jpeg":"!!!not base64!!!"}""")
+        assertEquals(ParkingStatus.UNSAFE, broken.status)
+        assertTrue(broken.evidenceImages.isEmpty())
+        val none = parseAnalysisResponse("""{"status":"APPROVE","reasons":[]}""")
+        assertTrue(none.evidenceImages.isEmpty())
     }
 }
