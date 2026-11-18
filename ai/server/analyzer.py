@@ -70,6 +70,8 @@ class Analyzer:
         self.coco = None if self.custom else YOLO(config.BASELINE_YOLO)
         custom_names = set(self.custom.names.values()) if self.custom else set()
         has_stuff = self.surface is not None or {"sidewalk", "road"} <= custom_names
+        surface_names = set(self.surface.names.values()) if self.surface else set()
+        self.models_braille = bool({"braille_block", TILE_CLASS} & (custom_names | surface_names))
         self.segformer = None if has_stuff else SegFormerStuff(self.device)
         parts = [f"custom YOLO-seg ({config.CUSTOM_WEIGHTS.name})" if self.custom else "COCO YOLO-seg"]
         if self.surface:
@@ -124,15 +126,18 @@ class Analyzer:
             if not vehicles:  # YOLO가 놓쳤으면 SegFormer의 자전거/오토바이 픽셀 중 가장 큰 덩어리
                 vehicles = self._largest_blob(np.isin(lab, [CITYSCAPES["bicycle"], CITYSCAPES["motorcycle"]]))
 
-        # 기기 픽셀은 바닥 클래스에서 뺀다
+        # 기기 픽셀은 바닥 클래스에서 뺀다. 판정에서 빼는 희미한 검출(확신도 < min_vehicle_conf)은
+        # 빼지 않는다: 빼면 그 자리가 보도도 기기도 아닌 구멍이 되어 폭 계산이 흔들림
         veh_any = np.zeros((h, w), bool)
         for v in vehicles:
-            veh_any |= v.mask
+            if v.conf >= self.th.min_vehicle_conf:
+                veh_any |= v.mask
         for k in stuff:
             stuff[k] &= ~veh_any
 
-        # 점자블록을 모델이 못 찾으면(베이스라인 등) 노란색으로 찾아본다
-        if not stuff["braille_block"].any():
+        # 점자블록을 인식하는 모델이 아예 없을 때만(베이스라인) 노란색으로 찾아본다.
+        # 모델이 있는데 못 찾았으면 없는 것으로 본다: 황색 연석·노란 페인트·낙엽을 점자블록으로 착각하기 쉬움
+        if not stuff["braille_block"].any() and not self.models_braille:
             strip, color_tiles = detect_braille_by_color(img, stuff["sidewalk"], stuff["road"])
             if strip is not None:
                 stuff["braille_block"] = strip & ~veh_any

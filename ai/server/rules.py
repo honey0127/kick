@@ -54,10 +54,11 @@ class Thresholds:
     max_crosswalk_overlap: float = 0.10
     footprint_frac: float = 0.25  # 차체 아래쪽 몇 %를 바닥 접지부로 볼지
     band_frac: float = 0.40  # 점유율을 잴 세로 구간 (차체 아래쪽)
-    ring_frac: float = 0.03  # 접지부 주변 바닥을 볼 링 두께 (이미지 높이 대비)
+    ring_frac: float = 0.03  # 접지부 주변 바닥을 볼 링 두께 (사진 긴 변 대비 -> 세로·가로로 찍어도 같은 두께)
     min_sidewalk_frac: float = 0.03  # 보도가 이만큼은 보여야 판단
     min_vehicle_frac: float = 0.005
-    min_vehicle_conf: float = 0.5  # 이보다 확신이 낮으면 추측하지 않고 재촬영
+    min_vehicle_conf: float = 0.5  # 이보다 확신이 낮은 검출은 대상·폭·몰림 계산에서 뺌. 남는 게 없으면 재촬영
+    target_tie_ratio: float = 0.8  # 2등 후보 점수가 1등의 이 비율 이상이면 둘 다 판정해 보고, 결과가 다르면 재촬영
     vehicle_edge_px: int = 2  # 킥보드 마스크가 화면 아래·좌·우 끝에서 이만큼 안에 닿으면 잘린 것으로 봄
     # 판단 보류 구간: 기준값 ± 이 폭 안이면 통과도 거절도 하지 않고 다시 세워서 찍게 한다
     # (같은 장소도 사진마다 윤곽이 조금씩 달라서, 기준선 바로 옆 값은 찍을 때마다 결과가 갈리기 때문)
@@ -116,6 +117,7 @@ class Verdict:
 MESSAGES = {
     "NO_VEHICLE": (RETAKE, "킥보드가 보이지 않아요. 킥보드 전체가 파란 틀 안에 들어오게 찍어주세요."),
     "LOW_CONF": (RETAKE, "킥보드가 또렷하게 보이지 않아요. 밝은 곳에서 킥보드 전체가 보이게 다시 찍어주세요."),
+    "AMBIGUOUS_TARGET": (RETAKE, "어떤 킥보드를 반납하는지 구분하기 어려워요. 반납할 킥보드가 가운데에 가장 크게 나오게 찍어주세요."),
     "VEHICLE_CUT": (RETAKE, "킥보드 일부가 화면 밖으로 잘렸어요. 바퀴까지 전부 파란 틀 안에 들어오게 찍어주세요."),
     "NO_SIDEWALK": (RETAKE, "주변 바닥이 잘 보이지 않아요. 한 걸음 물러나 주변이 보이게 찍어주세요."),
     "TRUNCATED": (RETAKE, "보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요. 뒤로 물러나 보도 전체가 보이게 찍어주세요."),
@@ -160,21 +162,22 @@ def bottom_part(mask: np.ndarray, frac: float) -> np.ndarray:
     return out
 
 
-def pick_target(vehicles: list[Vehicle], shape) -> int | None:
-    """반납 대상 기기: 화면 중앙에 가깝고 큰 것."""
-    if not vehicles:
-        return None
+def rank_targets(vehicles: list[Vehicle], shape) -> list[tuple[float, int]]:
+    """반납 대상 후보를 (점수, 번호) 로 높은 순서대로. 점수 = 크기 x 확신도 x 화면 중앙에 가까운 정도."""
     h, w = shape
-    best, best_score = None, -1.0
+    out = []
     for i, v in enumerate(vehicles):
         ys, xs = np.nonzero(v.mask)
         if ys.size == 0:
             continue
         dist = np.hypot(xs.mean() / w - 0.5, ys.mean() / h - 0.5)
-        score = ys.size * v.conf * (1.2 - dist)
-        if score > best_score:
-            best, best_score = i, score
-    return best
+        out.append((float(ys.size * v.conf * (1.2 - dist)), i))
+    return sorted(out, reverse=True)
+
+
+def pick_target(vehicles: list[Vehicle], shape) -> int | None:
+    ranked = rank_targets(vehicles, shape)
+    return ranked[0][1] if ranked else None
 
 
 def vehicle_gate(v: Vehicle, shape, th: Thresholds) -> str | None:
@@ -275,17 +278,30 @@ def judge(scene: Scene, th: Thresholds | None = None, ground=None) -> Verdict:
     """ground: server.ground.GroundScale (점자블록 실측 결과). 있으면 cm 단위로 판정한다."""
     th = th or Thresholds()
     h, w = scene.shape
-    total = h * w
-    metrics: dict = {"vehicle_count": len(scene.vehicles)}
-    reasons: list[dict] = []
-
-    vehicles = [v for v in scene.vehicles if v.mask.sum() >= total * th.min_vehicle_frac]
+    seen = [v for v in scene.vehicles if v.mask.sum() >= h * w * th.min_vehicle_frac]
+    # 희미한 검출(그림자·자전거 오인 등)이 점유율·몰림 계산에 섞이면 결과가 흔들리므로 아예 뺀다
+    vehicles = [v for v in seen if v.conf >= th.min_vehicle_conf]
+    if not vehicles:
+        return Verdict(RETAKE, [_reason("LOW_CONF" if seen else "NO_VEHICLE")], {"vehicle_count": 0}, ground=ground)
     scene = Scene(vehicles, scene.sidewalk, scene.road, scene.braille, scene.crosswalk, scene.braille_tiles)
-    metrics["vehicle_count"] = len(vehicles)
-    ti = pick_target(vehicles, (h, w))
-    if ti is None:
-        return Verdict(RETAKE, [_reason("NO_VEHICLE")], metrics, ground=ground)
 
+    # 반납 대상이 애매하면(비슷한 후보가 여럿) 후보마다 판정해 본다. 누구를 골라도 결과가 같으면 그대로,
+    # 다르면 구도에 따라 결과가 바뀌는 사진이므로 재촬영.
+    ranked = rank_targets(vehicles, (h, w))
+    cands = [i for score, i in ranked if score >= ranked[0][0] * th.target_tie_ratio]
+    verdicts = [_judge_target(scene, i, th, ground) for i in cands]
+    if len({v.status for v in verdicts}) > 1:
+        metrics = verdicts[0].metrics | {"target_candidates": len(cands)}
+        return Verdict(RETAKE, [_reason("AMBIGUOUS_TARGET")], metrics, cands[0], ground=ground)
+    return verdicts[0]
+
+
+def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
+    h, w = scene.shape
+    total = h * w
+    vehicles = scene.vehicles
+    metrics: dict = {"vehicle_count": len(vehicles)}
+    reasons: list[dict] = []
     target = vehicles[ti]
     metrics["target_kind"] = target.kind
     metrics["target_conf"] = round(float(target.conf), 3)
@@ -299,7 +315,7 @@ def judge(scene: Scene, th: Thresholds | None = None, ground=None) -> Verdict:
 
     veh_any = _union([v.mask for v in vehicles], (h, w))
     footprint = bottom_part(target.mask, th.footprint_frac)
-    ring = ground_ring(footprint, veh_any, max(3, int(h * th.ring_frac)))
+    ring = ground_ring(footprint, veh_any, max(3, int(max(h, w) * th.ring_frac)))
     ground_mask = scene.road | scene.sidewalk
     for extra in (scene.braille, scene.crosswalk):
         if extra is not None:

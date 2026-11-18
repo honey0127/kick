@@ -128,7 +128,7 @@ def test_width_hold_band():
 
 def test_braille_hold_band():
     # 킥보드(x 540~600) 오른쪽 점자블록 띠를 조금씩 가까이: 떨어짐 통과, 바퀴 둘레에 살짝 걸침 보류, 확실히 걸침 거절
-    want = {616: (APPROVE, set()), 612: (RETAKE, {"BORDER_BRAILLE"}), 606: (REJECT, {"ON_BRAILLE"})}
+    want = {620: (APPROVE, set()), 616: (RETAKE, {"BORDER_BRAILLE"}), 610: (REJECT, {"ON_BRAILLE"})}
     for b0, (status, cs) in want.items():
         road, sw = base()
         braille = np.zeros((H, W), bool)
@@ -136,3 +136,34 @@ def test_braille_hold_band():
         sw &= ~braille
         v = judge(scene([vehicle(540, 600)], road, sw, braille=braille))
         assert (v.status, codes(v)) == (status, cs), (b0, v.metrics["braille_overlap"])
+
+
+def test_faint_detection_not_counted():
+    # 확신도 0.3 짜리 오검출이 옆에 있어도 점유율·대수 계산에 안 들어간다
+    # (analyzer 는 희미한 검출의 픽셀을 보도에서 빼지 않으므로, 보도는 진짜 킥보드만 뺀 상태)
+    alone = scene([vehicle(540, 600)], *base())
+    faint = vehicle(260, 480, conf=0.3)
+    a = judge(alone)
+    b = judge(Scene([alone.vehicles[0], faint], alone.sidewalk, alone.road))
+    assert (b.status, b.metrics["vehicle_count"], b.metrics["width_occupancy"]) == (a.status, 1, a.metrics["width_occupancy"])
+
+
+def test_ambiguous_target_retake():
+    # 비슷한 크기 두 대: 하나는 차도, 하나는 보도 가장자리 -> 누구를 고르느냐에 따라 결과가 달라지므로 재촬영
+    road, sw = base()
+    v = judge(scene([vehicle(60, 140), vehicle(540, 620)], road, sw))
+    assert v.status == RETAKE and codes(v) == {"AMBIGUOUS_TARGET"}, v.reasons
+
+
+def test_clear_target_not_ambiguous():
+    # 반납 대상이 확실히 크면(2등이 1등의 80% 미만) 후보 비교 없이 판정
+    road, sw = base()
+    v = judge(scene([vehicle(60, 100, y0=380), vehicle(520, 620)], road, sw))
+    assert v.status == APPROVE, v.reasons
+
+
+def test_ring_same_for_portrait_and_landscape():
+    from server.rules import Thresholds
+    th = Thresholds()
+    for h, w in ((1280, 960), (960, 1280)):
+        assert max(3, int(max(h, w) * th.ring_frac)) == 38
