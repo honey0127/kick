@@ -5,8 +5,8 @@ train: images/train
 val: images/val
 
 names:
-  0: bicycle          # 서 있는 자전거 (일반·전기자전거 모두)
-  1: fallen_bicycle   # 넘어진 자전거
+  0: kickboard        # 서 있는 전동킥보드
+  1: fallen_kickboard # 넘어진 전동킥보드
   2: sidewalk         # 보도면 (보행 가능한 바닥)
   3: road             # 차도
   4: braille_block    # 점자블록 (선형·점형 모두)

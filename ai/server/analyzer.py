@@ -1,9 +1,9 @@
 """사진 -> 마스크(Scene) -> 판정(Verdict).
 
 모델 구성
-  1) models/kick_seg.pt 가 있으면: 직접 학습한 YOLO-seg 하나로 자전거·보도·차도·점자블록·횡단보도 전부 인식
+  1) models/kick_seg.pt 가 있으면: 직접 학습한 YOLO-seg 하나로 킥보드·보도·차도·점자블록·횡단보도 전부 인식
      (학습 데이터에 sidewalk/road 클래스가 없으면 그 부분만 바닥 모델/SegFormer로 보충)
-  2) 없으면: COCO YOLO-seg 의 bicycle 클래스로 자전거 인식 (학습 없이 바로 사용)
+  2) 없으면: COCO YOLO-seg 의 bicycle/motorcycle 을 킥보드 대용으로 사용 (COCO 에 킥보드 클래스가 없어 정확도 낮음)
      바닥은 models/kick_surface.pt, 그것도 없으면 Cityscapes SegFormer
 """
 from __future__ import annotations
@@ -20,11 +20,11 @@ from .ground import detect_braille_by_color, estimate_ground_scale
 from .rules import APPROVE, REJECT, Scene, Thresholds, Vehicle, bottom_part, judge
 
 # 학습 데이터셋 클래스 (training/dataset.yaml 과 같아야 함)
-VEHICLE_CLASSES = {"bicycle", "fallen_bicycle"}
+VEHICLE_CLASSES = {"kickboard", "fallen_kickboard"}
 STUFF_CLASSES = {"sidewalk", "road", "braille_block", "crosswalk"}
 TILE_CLASS = "braille_tile"  # 점자블록 한 장 (선택 라벨, 실측 정확도↑)
-COCO_VEHICLES = {1: "bicycle"}
-CITYSCAPES = {"road": 0, "sidewalk": 1, "bicycle": 18}
+COCO_VEHICLES = {1: "bicycle", 3: "motorcycle"}  # 킥보드 대용
+CITYSCAPES = {"road": 0, "sidewalk": 1, "motorcycle": 17, "bicycle": 18}
 
 
 def _device() -> str:
@@ -36,7 +36,7 @@ def _device() -> str:
 
 
 class SegFormerStuff:
-    """Cityscapes 사전학습 SegFormer 로 차도/보도(+자전거) 픽셀 분할."""
+    """Cityscapes 사전학습 SegFormer 로 차도/보도(+자전거·오토바이) 픽셀 분할."""
 
     def __init__(self, device: str):
         from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
@@ -102,7 +102,7 @@ class Analyzer:
         if self.custom:
             for name, conf, mask in self._yolo_instances(self.custom, img):
                 if name in VEHICLE_CLASSES:
-                    vehicles.append(Vehicle(mask, kind="bicycle", conf=conf, fallen=name == "fallen_bicycle"))
+                    vehicles.append(Vehicle(mask, kind="kickboard", conf=conf, fallen=name == "fallen_kickboard"))
                 elif name == TILE_CLASS:
                     tiles.append(mask)
                     stuff["braille_block"] |= mask
@@ -110,7 +110,7 @@ class Analyzer:
                     stuff[name] |= mask
         else:
             for name, conf, mask in self._yolo_instances(self.coco, img, classes=list(COCO_VEHICLES)):
-                vehicles.append(Vehicle(mask, kind=name, conf=conf))
+                vehicles.append(Vehicle(mask, kind="kickboard", conf=conf))
 
         if self.surface:
             for name, conf, mask in self._yolo_instances(self.surface, img):
@@ -121,8 +121,8 @@ class Analyzer:
             lab = self.segformer(img)
             stuff["road"] |= lab == CITYSCAPES["road"]
             stuff["sidewalk"] |= lab == CITYSCAPES["sidewalk"]
-            if not vehicles:  # YOLO가 놓쳤으면 SegFormer의 자전거 픽셀 중 가장 큰 덩어리
-                vehicles = self._largest_blob(lab == CITYSCAPES["bicycle"])
+            if not vehicles:  # YOLO가 놓쳤으면 SegFormer의 자전거/오토바이 픽셀 중 가장 큰 덩어리
+                vehicles = self._largest_blob(np.isin(lab, [CITYSCAPES["bicycle"], CITYSCAPES["motorcycle"]]))
 
         # 기기 픽셀은 바닥 클래스에서 뺀다
         veh_any = np.zeros((h, w), bool)
@@ -150,7 +150,7 @@ class Analyzer:
         if n <= 1:
             return []
         i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        return [Vehicle(labels == i, kind="bicycle", conf=0.5)]
+        return [Vehicle(labels == i, kind="kickboard", conf=0.5)]
 
     # ---------- 전체 파이프라인 ----------
     def analyze(self, img: np.ndarray) -> dict:

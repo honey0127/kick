@@ -1,6 +1,6 @@
-# 안주잘부 — AI 주차 판정 공유 자전거 반납
+# 안주잘부 — AI 주차 판정 공유 킥보드 반납
 
-인식 대상은 **자전거**(일반·전기자전거)입니다. COCO 사전학습 YOLO-seg 의 `bicycle` 클래스로 학습 없이 바로 인식하고, 직접 찍은 사진으로 학습한 `models/kick_seg.pt` 가 생기면 그 모델을 씁니다. (킥보드는 COCO 에 없는 클래스라 대상에서 뺐습니다.)
+인식 대상은 **전동 킥보드**입니다. 킥보드는 COCO 에 없는 클래스라, 공개 데이터셋(Roboflow Universe)과 직접 찍은 사진으로 학습한 `models/kick_seg.pt` 로 인식합니다. 이 모델이 없을 때는 COCO 의 bicycle/motorcycle 을 대신 쓰지만 정확도가 낮습니다.
 
 반납 순서를 **① GPS 위치 → ② 주차 사진 AI 판정 → ③ 결제** 로 강제합니다. 서버가 세션 단계를 관리해서 앞 단계를 통과하지 못하면 다음 API가 `409`를 돌려줍니다.
 
@@ -39,7 +39,7 @@ data/collected/ 반납 때 올라온 사진+판정 결과 (재학습용으로 �
 2. **30cm 격자 맞춤**: 가장 큰 블록 하나로 호모그래피를 만들고, 가까운 블록부터 꼭짓점을 30cm 격자점에 맞춰가며 다시 맞춘다. 이음매를 하나 놓쳐 60cm짜리 칸이 섞여도 같은 격자로 정리된다. 남은 재투영 오차(cm)와 블록 수로 신뢰도(높음/보통/낮음)를 낸다. **낮음이면 cm 판정을 쓰지 않고** 60% 비율 규칙만 쓴다.
 3. **조감도 단면**: 바닥(보도+점자블록)을 2cm/px 조감도로 펴고, 보도 방향(점자블록 띠 방향)에 수직인 단면을 10cm 간격으로 잘라 **기기를 피해 연속으로 지나갈 수 있는 폭**을 잰다. 최솟값 = 병목 통행폭. 기기는 바닥에 닿은 점(차체 맨 아래)만 지면으로 펴고 최소 차체 폭 55cm를 보장한다.
 4. **등급** (문제정의서 ⑤): 위험 < 120cm 또는 점자블록·횡단보도 점유 → 반납 거절 / 경고 120~150 / 주의 150~200 또는 3대 이상 군집 → 반납은 되지만 안내 / 양호 ≥ 200. 같은 등급 안의 우선순위용 **침해 점수(0~100)** = 통행폭 45% + 점자블록 근접 20% + 횡단보도 15% + 전도 10% + 군집 10% (사람 판정으로 가중치 보정 필요).
-5. 점자블록이 없으면: 자전거를 옆에서 찍었을 때 차체 길이(165cm)로 대략 환산한 값을 **표시만** 한다 (합성 장면에서 실제 235cm를 276cm로 볼 만큼 부정확해서 판정에는 안 씀).
+5. 점자블록이 없으면: 킥보드를 옆에서 찍었을 때 차체 길이(115cm)로 대략 환산한 값을 **표시만** 한다 (합성 장면에서 실제 235cm를 276cm로 볼 만큼 부정확해서 판정에는 안 씀).
 
 합성 원근 장면(`tests/synth.py`: 폭 3m 보도 + 30cm 점자블록 띠, 높이 1.5m 카메라)에서 축척 오차 1~2%, 잔여 통행폭 오차 ±5cm 이내로 확인했습니다. 실제 사진 정확도는 줄자 실측 데이터로 따로 검증해야 합니다 (아래 6번).
 
@@ -82,9 +82,9 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 -keyout key.pem -out cert.pe
 
 ## AI 학습시키기
 
-지금은 **베이스라인**(COCO YOLO-seg 자전거 인식 + Cityscapes SegFormer 차도/보도 분할)으로 돌아갑니다. 학습 없이 바로 쓸 수 있지만:
+지금은 **베이스라인**(COCO YOLO-seg 자전거·오토바이를 킥보드 대용 + Cityscapes SegFormer 차도/보도 분할)으로 돌아갑니다. 학습 없이 바로 쓸 수 있지만:
 
-- 자전거는 COCO 로 잡지만 '넘어진 자전거'는 따로 구분하지 못하고, COCO 바닥 모델은 점자블록·횡단보도를 아예 모릅니다.
+- COCO 에는 킥보드가 없어 자전거·오토바이로 잡히는 경우만 인식되고, 넘어진 킥보드도 구분하지 못하며, COCO 바닥 모델은 점자블록·횡단보도를 아예 모릅니다.
 - Cityscapes는 유럽 차량 시점 데이터라, 한국 골목의 아스팔트 보도·야간 사진을 차도로 착각합니다. (샘플 사진도 실제로 이렇게 `ON_ROAD`로 오판됨)
 
 그래서 직접 찍은 사진으로 학습한 모델이 필요합니다. `models/kick_seg.pt` 가 생기면 서버가 자동으로 그 모델을 씁니다.
@@ -101,18 +101,37 @@ edge_walk 프로젝트에 받아둔 AI Hub 189 Surface(보행자 시점 1920x108
 - 변환 결과 (영상 2프레임당 1장, 영상 단위 분할): train 19,956 / val 2,360 / test 1,030장, 폴리곤 차도 29,721 · 보도 27,788 · 점자블록 5,337 · 횡단보도 2,252
 - 클래스 매핑: sidewalk(재질 무관)→보도, braille_guide_blocks→점자블록, roadway·alley(이면도로)·bike_lane→차도, attribute=crosswalk→횡단보도, caution_zone(맨홀·가로수 구역 등)은 제외. 바꾸려면 `import_aihub189.py` 의 `target_of()`.
 - `models/kick_surface.pt` 가 생기면 서버가 SegFormer 대신 자동으로 사용합니다.
-- edge_walk 의 기존 학습 가중치(`runs/train/v1_yolo11n_1050ti_e50`)는 쓰지 않습니다: 박스 검출 모델이고 승용차·자전거·킥보드를 `vehicle` 한 클래스로 합쳐서 자전거만 골라낼 수 없습니다.
-- 189 Bbox 의 자전거 박스는 폴리곤이 아니라 박스라서 그대로는 분할 학습에 못 씁니다. SAM 에 박스를 넣어 마스크로 바꾸면 자전거 학습 데이터로 보탤 수 있습니다 (아직 스크립트 없음).
+- edge_walk 의 기존 학습 가중치(`runs/train/v1_yolo11n_1050ti_e50`)는 쓰지 않습니다: 박스 검출 모델이고 승용차·자전거·킥보드를 `vehicle` 한 클래스로 합쳐서 킥보드만 골라낼 수 없습니다.
+- 189 Bbox 의 킥보드 박스(921개)는 폴리곤이 아니라 박스라서 그대로는 분할 학습에 못 씁니다. SAM 에 박스를 넣어 마스크로 바꾸면 보탤 수 있습니다 (아직 스크립트 없음).
 
-자전거 인식은 COCO 모델로 바로 되지만, 국내 공유자전거 모양·넘어진 자전거·야간 사진에 맞추려면 직접 찍은 사진으로 학습하는 게 좋습니다 (아래 1~5).
+### 0-1. 킥보드 모델: Roboflow Universe 공개 데이터셋으로 학습
 
-1. **사진 모으기** → `data/raw/`. 앱으로 반납 테스트하면 `data/collected/` 에도 쌓입니다. 낮/밤, 보도 폭, 일반·전기자전거, 넘어진 자전거, 차도·점자블록·횡단보도 근처를 골고루 (최소 300장, 목표 1,500장 이상).
+윤곽(폴리곤) 라벨이 이미 있는 공개 데이터셋을 받아서 합칩니다. 둘 다 국내 보도 사진(AI Hub 이미지 포함)이고 표시된 이용 조건은 CC BY 4.0 입니다.
+
+| 데이터셋 | 장수 | 클래스 | 비고 |
+|---|---|---|---|
+| [kickboard-a0rbb (sully)](https://universe.roboflow.com/sully-aenkk/kickboard-a0rbb) | 1,260 | `0`, `1` | 보도에 세워 둔 공유 킥보드 + 점자블록. 받은 뒤 0/1 중 어느 쪽이 킥보드인지 라벨을 보고 확인 |
+| [kickboard-7qar2 (kickboard)](https://universe.roboflow.com/kickboard-fxlfk/kickboard-7qar2) | 766 | `scooter`, `guide_block` | 점자블록 위주, 킥보드는 제품·웹 사진이 섞여 있음 |
+
+1. Roboflow 에 로그인 → 각 데이터셋 Dataset 탭 → Download → 형식 **YOLOv11** (zip) → `data/roboflow/<이름>/` 에 압축 해제
+2. 합치기 (점자블록은 바닥 모델이 잡으므로 drop):
+   ```bash
+   .venv/Scripts/python training/import_roboflow.py --src data/roboflow/kickboard-a0rbb --map "0=kickboard,1=drop" --src data/roboflow/kickboard-7qar2 --map "scooter=kickboard,guide_block=drop"
+   ```
+3. 학습: `.venv/Scripts/python training/train.py --data data/kick_seg/data.yaml --model models/yolo11n-seg.pt --name kick_seg --out kick_seg.pt --epochs 80`
+
+- 데이터셋 이미지는 재배포하지 않습니다(`data/` 는 git 에서 제외). 결과물을 공개할 때는 출처(CC BY 4.0 표기)를 남겨주세요.
+- 공개 데이터는 우리 촬영 조건(2~3걸음 뒤, 한국 보도, 야간)과 다를 수 있으니, 직접 찍은 사진 30~50장은 학습에 넣지 말고 `data/eval/` 로 평가에만 쓰세요 (`training/evaluate.py`). 부족하면 그다음 아래 1~5 로 직접 라벨링한 사진을 보탭니다.
+
+국내 공유 킥보드 모양·넘어진 킥보드·야간 사진에 맞추려면 직접 찍은 사진으로 학습하는 게 좋습니다 (아래 1~5).
+
+1. **사진 모으기** → `data/raw/`. 앱으로 반납 테스트하면 `data/collected/` 에도 쌓입니다. 낮/밤, 보도 폭, 여러 업체의 킥보드, 넘어진 킥보드, 차도·점자블록·횡단보도 근처를 골고루 (최소 300장, 목표 1,500장 이상).
    파일 이름 앞에 장소를 붙이세요 (`북문__IMG_0012.jpg`). 4번 분할 때 같은 장소 사진이 학습·검증에 나뉘어 들어가지 않게 합니다.
 2. **사전 라벨** — AI가 먼저 그려두고 사람은 고치기만:
    ```bash
    .venv/Scripts/python training/prelabel.py data/raw
    ```
-3. **라벨 수정** — `data/prelabels` 를 CVAT 또는 Roboflow 에 "YOLO segmentation" 형식으로 올리고, 클래스(`training/dataset.yaml`: bicycle, fallen_bicycle, sidewalk, road, braille_block, crosswalk)를 고치고 빠진 것을 추가. 넘어진 자전거는 `fallen_bicycle` 로 바꿔주세요. SAM 자동 마스크 기능을 쓰면 빠릅니다.
+3. **라벨 수정** — `data/prelabels` 를 CVAT 또는 Roboflow 에 "YOLO segmentation" 형식으로 올리고, 클래스(`training/dataset.yaml`: kickboard, fallen_kickboard, sidewalk, road, braille_block, crosswalk)를 고치고 빠진 것을 추가. 넘어진 킥보드는 `fallen_kickboard` 로 바꿔주세요. SAM 자동 마스크 기능을 쓰면 빠릅니다.
 4. **내보내기** → `data/labeled/images`, `data/labeled/labels` 에 넣고 분할:
    ```bash
    .venv/Scripts/python training/split_dataset.py
@@ -148,6 +167,6 @@ edge_walk 프로젝트에 받아둔 AI Hub 189 Surface(보행자 시점 1920x108
 - **촬영 방향**: 실측이 안 될 때(비율 규칙) 보도를 옆에서 가로질러 찍으면 폭 비율이 부정확합니다. 촬영 화면에 글자 안내는 있지만, 기울기 센서로 각도를 잡아주는 기능은 아직 없습니다.
 - **고정 장애물**(가로수·볼라드·입간판) 클래스가 없어 통행폭에서 빼지 못함. 지금은 보도 마스크의 작은 끊김을 지나갈 수 있는 곳으로 봅니다.
 - **얼굴·번호판 블러**: 저장 사진의 EXIF 는 지우지만 얼굴·번호판은 아직 그대로입니다. OpenCV 5 에는 얼굴 검출 데이터가 들어 있지 않아 별도 모델(예: YuNet)이 필요합니다.
-- **GPS 신뢰**: 위치는 휴대폰이 보낸 좌표를 그대로 믿습니다. 위조를 막으려면 자전거 단말기 GPS 와 대조해야 합니다.
+- **GPS 신뢰**: 위치는 휴대폰이 보낸 좌표를 그대로 믿습니다. 위조를 막으려면 킥보드 단말기 GPS 와 대조해야 합니다.
 - 실제 PG 결제, 사용자 인증, 세션 DB 저장(지금은 메모리, 서버 여러 개로 늘리면 세션이 안 맞음).
 - 반복 침해 지점 집계(DBSCAN + PostGIS)와 담당자 대시보드.

@@ -4,7 +4,7 @@ CVAT / Roboflow 에 이미지와 함께 올려서 '고치기만' 하면 되므�
   python training/prelabel.py data/raw
   -> data/prelabels/images/*.jpg, data/prelabels/labels/*.txt
 
-자전거는 COCO 모델이 그려 주지만, 넘어진 자전거는 직접 fallen_bicycle 로 바꿔야 한다.
+킥보드는 COCO 의 자전거·오토바이로 대신 그리므로 모양이 틀리면 고치고, 넘어진 것은 fallen_kickboard 로 바꿔야 한다.
 점자블록·횡단보도는 베이스라인이 못 그리므로 라벨링 툴에서 직접 추가해야 한다.
 """
 import argparse
@@ -63,7 +63,7 @@ def main():
         scene = an.perceive(img)
         min_area = img.shape[0] * img.shape[1] * 0.002
         lines = []
-        layers = [(cid["bicycle"], v.mask) for v in scene.vehicles]
+        layers = [(cid["kickboard"], v.mask) for v in scene.vehicles]
         layers += [(cid["sidewalk"], scene.sidewalk), (cid["road"], scene.road)]
         for c, mask in layers:
             for poly in mask_to_polygons(mask, min_area):
