@@ -113,3 +113,26 @@ def test_same_scene_same_verdict():
     for x0, x1 in ((540, 600), (230, 560), (60, 140)):
         a, b = (judge(scene([vehicle(x0, x1)], *base())).to_dict() for _ in range(2))
         assert a == b
+
+
+def test_width_hold_band():
+    # 보도 430px: 약 50% 통과, 약 60% 보류(재촬영), 약 70% 거절
+    got = {}
+    for px in (215, 258, 301):
+        v = judge(scene([vehicle(230, 230 + px)], *base()))
+        got[px] = (v.status, codes(v), v.metrics["width_occupancy"])
+    assert got[215][0] == APPROVE, got
+    assert got[258][0] == RETAKE and got[258][1] == {"BORDER_WIDTH"}, got
+    assert got[301][0] == REJECT and "WIDTH" in got[301][1], got
+
+
+def test_braille_hold_band():
+    # 킥보드(x 540~600) 오른쪽 점자블록 띠를 조금씩 가까이: 떨어짐 통과, 바퀴 둘레에 살짝 걸침 보류, 확실히 걸침 거절
+    want = {616: (APPROVE, set()), 612: (RETAKE, {"BORDER_BRAILLE"}), 606: (REJECT, {"ON_BRAILLE"})}
+    for b0, (status, cs) in want.items():
+        road, sw = base()
+        braille = np.zeros((H, W), bool)
+        braille[240:, b0:b0 + 20] = True
+        sw &= ~braille
+        v = judge(scene([vehicle(540, 600)], road, sw, braille=braille))
+        assert (v.status, codes(v)) == (status, cs), (b0, v.metrics["braille_overlap"])

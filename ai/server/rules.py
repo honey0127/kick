@@ -59,6 +59,13 @@ class Thresholds:
     min_vehicle_frac: float = 0.005
     min_vehicle_conf: float = 0.5  # 이보다 확신이 낮으면 추측하지 않고 재촬영
     vehicle_edge_px: int = 2  # 킥보드 마스크가 화면 아래·좌·우 끝에서 이만큼 안에 닿으면 잘린 것으로 봄
+    # 판단 보류 구간: 기준값 ± 이 폭 안이면 통과도 거절도 하지 않고 다시 세워서 찍게 한다
+    # (같은 장소도 사진마다 윤곽이 조금씩 달라서, 기준선 바로 옆 값은 찍을 때마다 결과가 갈리기 때문)
+    width_hold: float = 0.05  # 점유율 60% ± 5%p -> 55~65%
+    residual_hold_cm: float = 10  # 통행폭 120cm ± 10cm -> 110~130cm (실측 목표 오차 10~15cm)
+    road_hold: float = 0.05  # 차도 30% ± 5%p
+    crosswalk_hold: float = 0.03  # 횡단보도 10% ± 3%p
+    braille_hold: float = 0.02  # 점자블록 5% ± 2%p
     min_span_frac: float = 0.05  # 한 행의 보도 폭이 이보다 좁으면 그 행은 무시
     gap_frac: float = 0.02  # 보도 마스크의 작은 끊김(가로수·사람 등)은 이어붙임
     edge_margin_px: int = 3
@@ -118,6 +125,11 @@ MESSAGES = {
     "ON_BRAILLE": (REJECT, "점자블록 위에 세워져 있어요. 점자블록을 비워주세요."),
     "WIDTH": (REJECT, "보도 폭을 너무 많이 차지해요({pct}%). 보도 가장자리에 붙여 세워주세요."),
     "NARROW": (REJECT, "남은 통행폭이 {cm}cm라 휠체어가 지나갈 수 없어요(최소 120cm). 보도 가장자리로 바짝 붙여주세요."),
+    "BORDER_ROAD": (RETAKE, "차도와 보도 경계에 걸쳐 있어 판단하기 어려워요. 보도 안쪽으로 조금 옮긴 뒤 다시 찍어주세요."),
+    "BORDER_CROSSWALK": (RETAKE, "횡단보도 진입부에 닿았는지 애매해요. 횡단보도에서 조금 떨어뜨려 세운 뒤 다시 찍어주세요."),
+    "BORDER_BRAILLE": (RETAKE, "점자블록에 닿았는지 애매해요. 점자블록에서 조금 떨어뜨려 세운 뒤 다시 찍어주세요."),
+    "BORDER_WIDTH": (RETAKE, "보도 폭을 기준(60%) 근처로 차지해서({pct}%) 판단하기 어려워요. 보도 가장자리로 조금 더 붙여 세운 뒤 다시 찍어주세요."),
+    "BORDER_NARROW": (RETAKE, "남은 통행폭이 {cm}cm로 기준(120cm) 근처라 판단하기 어려워요. 보도 가장자리로 조금 더 붙여 세운 뒤 다시 찍어주세요."),
     "WARN_WIDTH": (INFO, "남은 통행폭 {cm}cm — 반납은 되지만 휠체어·유모차가 지나가기 빠듯해요. 가장자리로 더 붙여주시면 좋아요."),
     "CAUTION_WIDTH": (INFO, "남은 통행폭 {cm}cm — 보도 기준폭(2m)보다 좁아요."),
     "CLUSTER": (INFO, "이 지점에 기기가 {n}대 몰려 있어요."),
@@ -302,15 +314,18 @@ def judge(scene: Scene, th: Thresholds | None = None, ground=None) -> Verdict:
 
     road_r, cross_r, braille_r = ratio(scene.road), ratio(scene.crosswalk), ratio(scene.braille)
     metrics.update(road_overlap=round(road_r, 3), crosswalk_overlap=round(cross_r, 3), braille_overlap=round(braille_r, 3))
-    on_road = road_r > th.max_road_overlap
-    braille_hit = braille_r > th.max_braille_overlap
-    cross_hit = cross_r > th.max_crosswalk_overlap
-    if on_road:
-        reasons.append(_reason("ON_ROAD"))
-    if cross_hit:
-        reasons.append(_reason("ON_CROSSWALK"))
-    if braille_hit:
-        reasons.append(_reason("ON_BRAILLE"))
+    on_road = road_r > th.max_road_overlap + th.road_hold
+    braille_hit = braille_r > th.max_braille_overlap + th.braille_hold
+    cross_hit = cross_r > th.max_crosswalk_overlap + th.crosswalk_hold
+    for value, limit, hold, hit, code in (
+        (road_r, th.max_road_overlap, th.road_hold, on_road, "ROAD"),
+        (cross_r, th.max_crosswalk_overlap, th.crosswalk_hold, cross_hit, "CROSSWALK"),
+        (braille_r, th.max_braille_overlap, th.braille_hold, braille_hit, "BRAILLE"),
+    ):
+        if hit:
+            reasons.append(_reason(f"ON_{code}"))
+        elif value > limit - hold:
+            reasons.append(_reason(f"BORDER_{code}"))
 
     sidewalk_frac = float(scene.sidewalk.sum() / total)
     metrics["sidewalk_frac"] = round(sidewalk_frac, 3)
@@ -338,14 +353,19 @@ def judge(scene: Scene, th: Thresholds | None = None, ground=None) -> Verdict:
             truncated=passage.truncated,
             scale_source=ground.source,
         )
-        if res_cm < th.min_residual_cm:
+        if res_cm < th.min_residual_cm - th.residual_hold_cm:
             reasons.append(_reason("NARROW", cm=round(res_cm)) if passage.conclusive else _reason("TRUNCATED"))
-        if passage.occupancy >= th.max_width_occupancy:
-            reasons.append(_reason("TRUNCATED") if passage.truncated else _reason("WIDTH", pct=round(passage.occupancy * 100)))
+        elif res_cm < th.min_residual_cm + th.residual_hold_cm:
+            reasons.append(_reason("BORDER_NARROW", cm=round(res_cm)))
+        occ_pct = round(passage.occupancy * 100)
+        if passage.occupancy >= th.max_width_occupancy + th.width_hold:
+            reasons.append(_reason("TRUNCATED") if passage.truncated else _reason("WIDTH", pct=occ_pct))
+        elif passage.occupancy >= th.max_width_occupancy - th.width_hold:
+            reasons.append(_reason("BORDER_WIDTH", pct=occ_pct))
         grade = grade_of(res_cm, braille_hit, cross_hit, len(vehicles), th)
         metrics["grade"] = grade
         metrics["score"] = score_of(res_cm, braille_hit, passage.braille_dist_cm, cross_hit, target.fallen, len(vehicles))
-        if grade in ("경고", "주의") and res_cm >= th.min_residual_cm:
+        if grade in ("경고", "주의") and res_cm >= th.min_residual_cm + th.residual_hold_cm:
             code = "WARN_WIDTH" if res_cm < th.warn_cm else "CAUTION_WIDTH" if res_cm < th.caution_cm else None
             if code:
                 reasons.append(_reason(code, cm=round(res_cm)))
@@ -365,12 +385,14 @@ def judge(scene: Scene, th: Thresholds | None = None, ground=None) -> Verdict:
     ratios = np.array([r["ratio"] for r in rows_info])
     occ = float(np.percentile(ratios, th.row_percentile))
     worst = rows_info[int(np.argmax(ratios))]
-    over = [r for r in rows_info if r["ratio"] >= th.max_width_occupancy]
+    over = [r for r in rows_info if r["ratio"] >= th.max_width_occupancy - th.width_hold]
     truncated = bool(over) and sum(r["truncated"] for r in over) > len(over) / 2
     metrics.update(width_occupancy=round(occ, 3), truncated=truncated)
     verdict.worst_row, verdict.worst_span = worst["y"], (worst["x0"], worst["x1"])
-    if occ >= th.max_width_occupancy:
+    if occ >= th.max_width_occupancy + th.width_hold:
         reasons.append(_reason("TRUNCATED") if truncated else _reason("WIDTH", pct=round(occ * 100)))
+    elif occ >= th.max_width_occupancy - th.width_hold:
+        reasons.append(_reason("TRUNCATED") if truncated else _reason("BORDER_WIDTH", pct=round(occ * 100)))
 
     # 최후 대체 기준: 기기를 옆에서 찍었으면 차체 길이로 대략 cm 환산 (표시만, 판정에는 안 씀)
     L = th.vehicle_length_cm.get(target.kind)
