@@ -57,6 +57,8 @@ class Thresholds:
     ring_frac: float = 0.03  # 접지부 주변 바닥을 볼 링 두께 (이미지 높이 대비)
     min_sidewalk_frac: float = 0.03  # 보도가 이만큼은 보여야 판단
     min_vehicle_frac: float = 0.005
+    min_vehicle_conf: float = 0.5  # 이보다 확신이 낮으면 추측하지 않고 재촬영
+    vehicle_edge_px: int = 2  # 킥보드 마스크가 화면 아래·좌·우 끝에서 이만큼 안에 닿으면 잘린 것으로 봄
     min_span_frac: float = 0.05  # 한 행의 보도 폭이 이보다 좁으면 그 행은 무시
     gap_frac: float = 0.02  # 보도 마스크의 작은 끊김(가로수·사람 등)은 이어붙임
     edge_margin_px: int = 3
@@ -106,6 +108,8 @@ class Verdict:
 
 MESSAGES = {
     "NO_VEHICLE": (RETAKE, "킥보드가 보이지 않아요. 킥보드 전체가 파란 틀 안에 들어오게 찍어주세요."),
+    "LOW_CONF": (RETAKE, "킥보드가 또렷하게 보이지 않아요. 밝은 곳에서 킥보드 전체가 보이게 다시 찍어주세요."),
+    "VEHICLE_CUT": (RETAKE, "킥보드 일부가 화면 밖으로 잘렸어요. 바퀴까지 전부 파란 틀 안에 들어오게 찍어주세요."),
     "NO_SIDEWALK": (RETAKE, "주변 바닥이 잘 보이지 않아요. 한 걸음 물러나 주변이 보이게 찍어주세요."),
     "TRUNCATED": (RETAKE, "보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요. 뒤로 물러나 보도 전체가 보이게 찍어주세요."),
     "FALLEN": (REJECT, "기기가 넘어져 있어요. 똑바로 세운 뒤 다시 찍어주세요."),
@@ -159,6 +163,18 @@ def pick_target(vehicles: list[Vehicle], shape) -> int | None:
         if score > best_score:
             best, best_score = i, score
     return best
+
+
+def vehicle_gate(v: Vehicle, shape, th: Thresholds) -> str | None:
+    """판정에 쓸 만큼 킥보드가 보이는지. 안 되면 재촬영 사유 코드."""
+    if v.conf < th.min_vehicle_conf:
+        return "LOW_CONF"
+    h, w = shape
+    e = th.vehicle_edge_px
+    m = v.mask
+    if m[h - e:].any() or m[:, :e].any() or m[:, w - e:].any():
+        return "VEHICLE_CUT"
+    return None
 
 
 def ground_ring(footprint: np.ndarray, vehicles_any: np.ndarray, ring_px: int) -> np.ndarray:
@@ -261,6 +277,11 @@ def judge(scene: Scene, th: Thresholds | None = None, ground=None) -> Verdict:
     target = vehicles[ti]
     metrics["target_kind"] = target.kind
     metrics["target_conf"] = round(float(target.conf), 3)
+    # 킥보드가 제대로 안 보이면 점자블록·차도·폭을 재지 않는다. 잘리거나 흐린 마스크로 재면
+    # 같은 장소도 찍을 때마다 결과가 달라지므로, 추측 대신 항상 재촬영으로 돌려보낸다.
+    gate = vehicle_gate(target, (h, w), th)
+    if gate:
+        return Verdict(RETAKE, [_reason(gate)], metrics, ti, ground=ground)
     if target.fallen:
         reasons.append(_reason("FALLEN"))
 

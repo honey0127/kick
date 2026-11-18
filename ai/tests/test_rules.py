@@ -95,3 +95,21 @@ def test_truncated_frame_asks_retake():
     sw[240:, :] = True
     v = judge(scene([vehicle(60, 560)], road, sw))
     assert v.status == RETAKE and "TRUNCATED" in codes(v)
+
+
+def test_low_confidence_retake_not_guess():
+    road, sw = base()
+    v = judge(scene([vehicle(230, 560, conf=0.3)], road, sw))  # 막고 있어도 흐리게 잡히면 재촬영
+    assert v.status == RETAKE and codes(v) == {"LOW_CONF"}
+
+
+def test_cut_vehicle_retake_even_on_road():
+    road, sw = base()
+    v = judge(scene([vehicle(60, 140, y1=H)], road, sw))  # 바퀴가 화면 아래로 잘림
+    assert v.status == RETAKE and codes(v) == {"VEHICLE_CUT"}
+
+
+def test_same_scene_same_verdict():
+    for x0, x1 in ((540, 600), (230, 560), (60, 140)):
+        a, b = (judge(scene([vehicle(x0, x1)], *base())).to_dict() for _ in range(2))
+        assert a == b
