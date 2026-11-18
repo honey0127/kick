@@ -1,6 +1,6 @@
 # 안주잘부 — AI 주차 판정 공유 킥보드 반납
 
-인식 대상은 **전동 킥보드**입니다. 킥보드는 COCO 에 없는 클래스라, 공개 데이터셋(Roboflow Universe)과 직접 찍은 사진으로 학습한 `models/kick_seg.pt` 로 인식합니다. 이 모델이 없을 때는 COCO 의 bicycle/motorcycle 을 대신 쓰지만 정확도가 낮습니다.
+인식 대상은 **전동 킥보드**입니다. 킥보드는 COCO 에 없는 클래스라, 공개 데이터셋(Roboflow Universe)으로 학습한 `models/kick_seg.pt` 로 인식합니다. 이 모델이 없을 때는 COCO 의 bicycle/motorcycle 을 대신 쓰지만 정확도가 낮습니다.
 
 반납 순서를 **① GPS 위치 → ② 주차 사진 AI 판정 → ③ 결제** 로 강제합니다. 서버가 세션 단계를 관리해서 앞 단계를 통과하지 못하면 다음 API가 `409`를 돌려줍니다.
 
@@ -106,22 +106,38 @@ edge_walk 프로젝트에 받아둔 AI Hub 189 Surface(보행자 시점 1920x108
 
 ### 0-1. 킥보드 모델: Roboflow Universe 공개 데이터셋으로 학습
 
-윤곽(폴리곤) 라벨이 이미 있는 공개 데이터셋을 받아서 합칩니다. 둘 다 국내 보도 사진(AI Hub 이미지 포함)이고 표시된 이용 조건은 CC BY 4.0 입니다.
+윤곽(폴리곤) 라벨이 이미 있는 공개 데이터셋 세 개를 합쳐 `models/kick_seg.pt` 를 학습했습니다. 받은 zip 의 실제 내용 기준입니다 (페이지에 적힌 장수와 다름).
 
-| 데이터셋 | 장수 | 클래스 | 비고 |
-|---|---|---|---|
-| [kickboard-a0rbb (sully)](https://universe.roboflow.com/sully-aenkk/kickboard-a0rbb) | 1,260 | `0`, `1` | 보도에 세워 둔 공유 킥보드 + 점자블록. 받은 뒤 0/1 중 어느 쪽이 킥보드인지 라벨을 보고 확인 |
-| [kickboard-7qar2 (kickboard)](https://universe.roboflow.com/kickboard-fxlfk/kickboard-7qar2) | 766 | `scooter`, `guide_block` | 점자블록 위주, 킥보드는 제품·웹 사진이 섞여 있음 |
+| 데이터셋 (출처, CC BY 4.0) | 받은 사진 | 킥보드가 있는 원본 사진 | 내용 | `--map` |
+|---|---|---|---|---|
+| [kickboard (sully)](https://universe.roboflow.com/sully-aenkk/kickboard-a0rbb), v2 | 267 | 76 (97개) | 보도에 세운 공유 킥보드, 점자블록 | `0=drop,1=kickboard` (0 이 점자블록) |
+| [kickboard (kickboard)](https://universe.roboflow.com/kickboard-fxlfk/kickboard-7qar2) | 2,151 (증강 포함, 원본 764) | 194 | 점자블록 위주, 킥보드는 제품·웹 사진이 많음 | `scooter=kickboard,guide_block=drop` |
+| [kb (jihoon)](https://universe.roboflow.com/jihoon-xw2ya/kb-erubr), v2 | 529 (증강 포함, 원본 184) | 184 | 국내 길거리 킥보드, 주행 장면, 넘어져 쌓인 킥보드(라벨은 kickboard) | `kickboard=kickboard` |
+| [lane (kick board)](https://universe.roboflow.com/kick-board/lane-eb6kp), v5 | 473 | 28 | 국내 보도에 세운 공유 킥보드 — **학습에 안 쓰고 실제 장면 시험용** | `kick=kickboard`, 나머지 drop |
 
-1. Roboflow 에 로그인 → 각 데이터셋 Dataset 탭 → Download → 형식 **YOLOv11** (zip) → `data/roboflow/<이름>/` 에 압축 해제
-2. 합치기 (점자블록은 바닥 모델이 잡으므로 drop):
+1. Roboflow 에 로그인 → 각 데이터셋 Download → 형식 **YOLOv11** → `data/roboflow/<이름>/` 에 압축 해제
+   (다운로드 링크를 curl 로 받으면 Cloudflare 확인 페이지가 와서, 브라우저로 받아야 합니다)
+2. 합치기 (점자블록은 바닥 모델이 잡으므로 drop. Roboflow 증강본이 train/test 로 갈리지 않게 원본 이름 단위로 다시 나눔):
    ```bash
-   .venv/Scripts/python training/import_roboflow.py --src data/roboflow/kickboard-a0rbb --map "0=kickboard,1=drop" --src data/roboflow/kickboard-7qar2 --map "scooter=kickboard,guide_block=drop"
+   .venv/Scripts/python training/import_roboflow.py --src data/roboflow/kickboard-a0rbb --map "0=drop,1=kickboard" --src data/roboflow/kickboard-7qar2 --map "scooter=kickboard,guide_block=drop" --src data/roboflow/kb-erubr --map "kickboard=kickboard"
    ```
-3. 학습: `.venv/Scripts/python training/train.py --data data/kick_seg/data.yaml --model models/yolo11n-seg.pt --name kick_seg --out kick_seg.pt --epochs 80`
+   → 2,947장 (train 2,227 / val 471 / test 249), 킥보드 없는 사진 1,794장 포함
+3. 학습: `.venv/Scripts/python training/train.py --data data/kick_seg/data.yaml --model models/yolo11n-seg.pt --name kick_seg --out kick_seg.pt --epochs 60`
+   (GTX 1050 Ti, batch 8, 60 epoch 약 2.5시간)
 
-- 데이터셋 이미지는 재배포하지 않습니다(`data/` 는 git 에서 제외). 결과물을 공개할 때는 출처(CC BY 4.0 표기)를 남겨주세요.
-- 공개 데이터는 우리 촬영 조건(2~3걸음 뒤, 한국 보도, 야간)과 다를 수 있으니, 직접 찍은 사진 30~50장은 학습에 넣지 말고 `data/eval/` 로 평가에만 쓰세요 (`training/evaluate.py`). 부족하면 그다음 아래 1~5 로 직접 라벨링한 사진을 보탭니다.
+**결과** (2026-11-18, `models/kick_seg.pt` = epoch 53 의 best)
+
+| 평가 | 사진 | kickboard mask mAP50 | mask mAP50-95 | P / R |
+|---|---|---|---|---|
+| 검증 (val, 학습 중 최고) | 471장 | 0.536 | — | — |
+| 시험 (test split) | 249장, 킥보드 212개 | **0.671** | 0.362 | 0.727 / 0.679 |
+| 실제 장면 (lane, 킥보드 라벨 있는 사진만) | 52장 (원본 28), 킥보드 64개 | **0.812** | 0.519 | 0.803 / 0.828 |
+
+- 목표(0.85)에는 못 미칩니다. 시험 데이터에 제품 사진·주행 장면·작게 찍힌 킥보드가 많아서 낮게 나오고, 우리 촬영 조건에 가까운 lane 에서는 더 높게 나옵니다.
+- lane 전체(473장)로 재면 0.217 이 나오는데, 킥보드가 찍혀 있어도 라벨이 없는 사진이 많아서(킥보드 없는 사진 421장 중 261장에서 conf 0.5 이상 검출, 눈으로 보니 대부분 실제 킥보드) 믿을 수 없는 값입니다.
+- `fallen_kickboard` 는 학습 데이터가 0개라 점수가 없고, 넘어짐(FALLEN) 판정은 아직 작동하지 않습니다.
+- 데이터셋 이미지는 재배포하지 않습니다(`data/` 는 git 에서 제외). 위 표의 출처 링크와 CC BY 4.0 표기를 지워서는 안 됩니다.
+- 직접 찍은 반납 사진(`data/eval/approve`, `data/eval/reject`)으로 판정 정확도를 잰 적은 아직 없습니다 (`training/evaluate.py`).
 
 국내 공유 킥보드 모양·넘어진 킥보드·야간 사진에 맞추려면 직접 찍은 사진으로 학습하는 게 좋습니다 (아래 1~5).
 

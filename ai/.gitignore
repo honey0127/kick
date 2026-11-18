@@ -13,6 +13,7 @@ data/test_surface/*
 # 모델: 사전학습 가중치는 자동 다운로드되므로 제외, 직접 학습한 것만 올림
 models/*.pt
 !models/kick_surface.pt
+!models/kick_seg.pt
 
 # 학습 기록: 곡선·지표만 올리고 데이터 이미지가 들어간 배치 미리보기와 중복 가중치는 제외
 runs/*
@@ -20,3 +21,7 @@ runs/*
 runs/kick_surface/weights/
 runs/kick_surface/*batch*.jpg
 runs/kick_surface/labels.jpg
+!runs/kick_seg/
+runs/kick_seg/weights/
+runs/kick_seg/*batch*.jpg
+runs/kick_seg/labels.jpg
