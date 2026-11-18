@@ -1,4 +1,4 @@
-// 반납 흐름: ① GPS 위치 확인 -> ② 주차 사진 AI 판정 -> ③ 결제
+// 반납 흐름: ① GPS 위치 확인 -> ② 주차 사진 AI 판정 -> ③ 반납 완료
 const $ = (s) => document.querySelector(s);
 const state = { token: null, zone: null, stream: null, torch: false, lastPos: null };
 
@@ -165,14 +165,14 @@ async function submitPhoto(blob) {
   show("screen-result");
   $("#analyzing").hidden = false;
   $("#result").hidden = true;
-  $("#btn-to-pay").hidden = true;
+  $("#btn-complete").hidden = true;
   const fd = new FormData();
   fd.append("token", state.token);
   fd.append("file", blob, "photo.jpg");
   try {
     const r = await api("/api/return/photo", { method: "POST", body: fd });
     const notice = r.reasons.some((x) => x.status === "INFO");
-    const title = { APPROVE: notice ? "✓ 반납 가능 — 안내를 확인해주세요" : "✓ 주차 상태 양호 — 결제를 진행해주세요", REJECT:"✕ 이 위치에는 반납할 수 없어요", RETAKE: "! 다시 촬영해주세요" }[r.status];
+    const title = { APPROVE: notice ? "✓ 반납 가능 — 안내를 확인해주세요" : "✓ 주차 상태 양호 — 반납을 완료해주세요", REJECT:"✕ 이 위치에는 반납할 수 없어요", RETAKE: "! 다시 촬영해주세요" }[r.status];
     const v = $("#verdict");
     v.className = "verdict " + r.status;
     v.textContent = title;
@@ -193,7 +193,7 @@ async function submitPhoto(blob) {
     $("#metrics").innerHTML = Object.entries(METRIC_LABELS)
       .filter(([k]) => m[k] !== undefined && !(k.endsWith("_overlap") && m[k] === 0))
       .map(([k, [label, fmt]]) => `<dt>${label}</dt><dd>${fmt(m[k])}</dd>`).join("");
-    $("#btn-to-pay").hidden = r.status !== "APPROVE";
+    $("#btn-complete").hidden = r.status !== "APPROVE";
     $("#btn-retake").textContent = r.status === "APPROVE" ? "다시 촬영" : "옮긴 뒤 다시 촬영";
   } catch (e) {
     const v = $("#verdict");
@@ -212,21 +212,15 @@ async function submitPhoto(blob) {
 }
 
 $("#btn-retake").onclick = () => show("screen-camera");
-$("#btn-to-pay").onclick = () => {
-  $("#pay-vehicle").textContent = $("#vehicle-id").value;
-  $("#pay-zone").textContent = state.zone;
-  show("screen-pay");
-};
-
-// ---------- ③ 결제 ----------
-$("#btn-pay").onclick = async () => {
-  const btn = $("#btn-pay");
+// ---------- ③ 반납 완료 ----------
+$("#btn-complete").onclick = async () => {
+  const btn = $("#btn-complete");
   btn.disabled = true;
   try {
-    const r = await api("/api/return/pay", {
+    const r = await api("/api/return/complete", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: state.token }),
     });
-    $("#done-msg").textContent = `${r.vehicle_id} · ${r.amount.toLocaleString()}원 결제 · 영수증 ${r.receipt_id}`;
+    $("#done-msg").textContent = `${r.vehicle_id} · ${state.zone} · 반납번호 ${r.return_id}`;
     show("screen-done");
   } catch (e) { alert(e.message); } finally { btn.disabled = false; }
 };

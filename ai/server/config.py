@@ -24,7 +24,7 @@ COLLECT_DIR = DATA_DIR / "collected"
 ZONES_FILE = Path(os.getenv("KICK_ZONES", ROOT / "server" / "zones.geojson"))
 REQUIRE_PARKING_ZONE = os.getenv("KICK_REQUIRE_PARKING_ZONE", "0") == "1"  # 1이면 지정 주차구역 안에서만 반납
 MAX_GPS_ACCURACY_M = float(os.getenv("KICK_MAX_GPS_ACCURACY_M", "50"))
-SESSION_TTL_S = int(os.getenv("KICK_SESSION_TTL_S", "600"))  # 위치 확인 후 사진·결제까지 유효 시간
+SESSION_TTL_S = int(os.getenv("KICK_SESSION_TTL_S", "600"))  # 위치 확인 후 사진·반납 완료까지 유효 시간
 
 # 업로드·남용 제한
 MAX_UPLOAD_MB = float(os.getenv("KICK_MAX_UPLOAD_MB", "15"))

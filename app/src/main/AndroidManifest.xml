@@ -8,6 +8,12 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- 반납 전에 현재 위치가 주차할 수 있는 곳인지 서버에 확인한다 (반납 순서 ①) -->
+    <uses-feature
+        android:name="android.hardware.location"
+        android:required="false" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- AI 분석 서버에 사진을 보낸다 -->
     <uses-permission android:name="android.permission.INTERNET" />
 

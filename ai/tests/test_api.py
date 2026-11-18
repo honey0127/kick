@@ -1,4 +1,4 @@
-"""반납 순서(위치 -> 사진 -> 결제) 강제 확인. AI 모델 대신 가짜 분석기를 쓴다."""
+"""반납 순서(위치 -> 사진 -> 반납 완료) 강제 확인. AI 모델 대신 가짜 분석기를 쓴다."""
 import cv2
 import numpy as np
 import pytest
@@ -34,18 +34,18 @@ def photo(client, token):
 def test_full_flow(client, monkeypatch):
     monkeypatch.setattr(main, "get_analyzer", lambda: FakeAnalyzer("APPROVE"))
     token = client.post("/api/return/location", json=PARKING).json()["token"]
-    assert client.post("/api/return/pay", json={"token": token}).status_code == 409  # 사진 전 결제 불가
+    assert client.post("/api/return/complete", json={"token": token}).status_code == 409  # 사진 전 반납 완료 불가
     assert photo(client, token).json()["status"] == "APPROVE"
-    r = client.post("/api/return/pay", json={"token": token})
+    r = client.post("/api/return/complete", json={"token": token})
     assert r.status_code == 200 and r.json()["ok"]
-    assert client.post("/api/return/pay", json={"token": token}).status_code == 409  # 중복 결제 불가
+    assert client.post("/api/return/complete", json={"token": token}).status_code == 409  # 중복 완료 불가
 
 
-def test_rejected_photo_blocks_payment(client, monkeypatch):
+def test_rejected_photo_blocks_completion(client, monkeypatch):
     monkeypatch.setattr(main, "get_analyzer", lambda: FakeAnalyzer("REJECT"))
     token = client.post("/api/return/location", json=PARKING).json()["token"]
     assert photo(client, token).json()["status"] == "REJECT"
-    assert client.post("/api/return/pay", json={"token": token}).status_code == 409
+    assert client.post("/api/return/complete", json={"token": token}).status_code == 409
 
 
 def test_photo_attempts_limited(client, monkeypatch):

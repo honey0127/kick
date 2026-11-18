@@ -2,6 +2,7 @@ package com.example.safezone.data.analysis
 
 import android.util.Base64
 import android.util.Log
+import com.example.safezone.data.location.ReturnSession
 import com.example.safezone.data.model.AnalysisResult
 import com.example.safezone.data.model.EvidenceImage
 import com.example.safezone.data.model.EvidenceImageKind
@@ -22,15 +23,19 @@ private const val TAG = "SafeZone"
 
 /**
  * AI 분석 서버(ai/ 폴더의 FastAPI)에 사진을 보내 판정을 받는다.
- * 서버는 KICK_OPEN_ANALYZE=1 (또는 KICK_DEV=1) 로 실행해야 /api/analyze 가 열린다.
+ * 위치 확인을 통과해 session 에 반납 토큰이 있으면 반납 순서용 /api/return/photo 로 보낸다
+ * (서버가 위치 확인 여부와 판정 횟수를 검사한다).
+ * 토큰이 없으면 /api/analyze 로 보내는데, 서버를 KICK_OPEN_ANALYZE=1 (또는 KICK_DEV=1) 로 실행해야 열린다.
  *
  * @param serverUrl 예: 에뮬레이터에서 PC 서버는 "http://10.0.2.2:8000"
  * @param readPhoto 사진 URI -> 파일 바이트 (앱에서는 ContentResolver 로 읽는다)
+ * @param session 위치 확인에서 받은 반납 토큰 (RemoteReturnApi 와 같은 객체)
  */
 class RemotePhotoAnalyzer(
     private val serverUrl: String,
     private val readPhoto: suspend (photoUri: String) -> ByteArray,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val session: ReturnSession? = null,
 ) : PhotoAnalyzer {
 
     override suspend fun analyze(photoUri: String): AnalysisResult = withContext(ioDispatcher) {
@@ -50,7 +55,9 @@ class RemotePhotoAnalyzer(
 
     private fun upload(photo: ByteArray): String {
         val boundary = "----SafeZone" + UUID.randomUUID().toString().replace("-", "")
-        val conn = URL(serverUrl.trimEnd('/') + "/api/analyze").openConnection() as HttpURLConnection
+        val token = session?.token
+        val path = if (token != null) "/api/return/photo" else "/api/analyze"
+        val conn = URL(serverUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 10_000
@@ -59,6 +66,13 @@ class RemotePhotoAnalyzer(
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
             conn.outputStream.use { out ->
+                if (token != null) {
+                    out.write(
+                        ("--$boundary\r\n" +
+                            "Content-Disposition: form-data; name=\"token\"\r\n\r\n" +
+                            "$token\r\n").toByteArray(),
+                    )
+                }
                 out.write(
                     ("--$boundary\r\n" +
                         "Content-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\r\n" +

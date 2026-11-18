@@ -10,10 +10,15 @@
 ## 화면 흐름
 
 ```
-홈 ─┬─ 사진 촬영하기 ──→ 촬영 ──┐
-    │                         ├─→ 사진 확인 ─→ 분석 중 ─→ 결과
-    └─ 갤러리에서 선택하기 ─────┘
+홈 ─┬─ 사진 촬영하기 ────┐                   ┌→ 촬영 ──┐
+    │                    ├→ 위치 확인 (①) ──┤         ├─→ 사진 확인 ─→ 분석 중 (②) ─→ 결과 ─→ 반납 완료 (③, 양호일 때)
+    └─ 갤러리에서 선택하기 ┘                   └→ 갤러리 ┘
 ```
+
+- **위치 확인(①)은 AI 서버 주소를 설정한 경우에만** 나옵니다. 위치 권한을 받아 현재 위치를 서버에 보내고, 주차할 수 있는 곳이면 고른 방법(촬영/갤러리)으로 넘어갑니다.
+  금지 구역·서비스 지역 밖·GPS 정확도 부족이면 서버가 보낸 안내와 "다시 확인하기"를 보여 줍니다.
+- 서버 주소가 없으면(임시 분석기) 위치 확인 없이 바로 촬영/갤러리로 갑니다.
+- 결과가 양호(SAFE)일 때 "홈으로 돌아가기"를 누르면 서버에 반납 완료(③)를 알립니다. 결제는 범위에서 뺐습니다.
 
 | 결과 | 메인 버튼 | 이동 |
 |---|---|---|
@@ -64,21 +69,24 @@
 
 ## AI 분석 연결 방법
 
-화면은 `PhotoAnalyzer` 인터페이스만 사용하고, `navigation/AppNavigation.kt` 가 서버 주소에 따라 구현을 고릅니다.
+화면은 `PhotoAnalyzer`, `ReturnApi` 인터페이스만 사용하고, `navigation/AppNavigation.kt` 가 서버 주소에 따라 구현을 고릅니다.
 
-| 서버 주소 | 쓰는 분석기 |
+| 서버 주소 | 반납 순서 |
 |---|---|
-| 있음 | `RemotePhotoAnalyzer` — 사진을 AI 서버의 `/api/analyze` 로 보내 판정 |
-| 없음 (기본) | `MockPhotoAnalyzer` — 약 2초 뒤 SAFE → UNSAFE → UNCERTAIN 순서로 정해진 결과 |
+| 있음 | ① `RemoteReturnApi` 가 `/api/return/location` 으로 위치 확인 → 반납 토큰 발급 → ② `RemotePhotoAnalyzer` 가 토큰과 함께 `/api/return/photo` 로 사진 판정 → ③ 양호면 `/api/return/complete` |
+| 없음 (기본) | 위치 확인 없음. `MockPhotoAnalyzer` 가 약 2초 뒤 SAFE → UNSAFE → UNCERTAIN 순서로 정해진 결과 |
+
+서버가 단계를 검사하므로 위치 확인 없이 사진만 보내면 거절되고, 한 번의 위치 확인으로 사진 판정은 10번까지 할 수 있습니다.
+위치 확인 후 10분이 지나면 토큰이 만료되어 처음부터 다시 해야 합니다.
 
 **1. AI 서버 실행** (`ai/` 폴더, 자세한 설치는 [ai/README.md](ai/README.md))
 
 ```bash
-# PowerShell:  $env:KICK_OPEN_ANALYZE="1"; .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
-KICK_OPEN_ANALYZE=1 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+.venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-`KICK_OPEN_ANALYZE=1` 을 빼면 `/api/analyze` 가 닫혀 있어 앱에 "분석하지 못했어요"가 뜹니다.
+**에뮬레이터 위치**: 서버는 `ai/server/zones.geojson` 의 구역(지금은 경북대 북문 주변 예시)으로 반납 가능 여부를 판단합니다.
+에뮬레이터의 Extended Controls(⋯) → Location 에서 구역 안 좌표(예: 위도 35.89265, 경도 128.609)를 지정해야 위치 확인을 통과합니다.
 
 **2. 앱에 서버 주소 지정** — `local.properties` 에 한 줄 추가 (PC마다 다르므로 git 에 올리지 않음)
 
@@ -95,7 +103,7 @@ analysis.server.url=http://10.0.2.2:8000
 판단 보류(`RETAKE`)는 서버가 폭을 믿을 수 없다고 한 경우라, 잰 값은 빼고 사유 문구만 보여 줍니다.
 서버가 보낸 근거 이미지(`overlay_jpeg`, `bev_jpeg`)는 결과 화면의 "판정 근거 이미지" 카드에 표시합니다.
 
-**연결이 안 될 때**: 분석 중 화면에 "분석하지 못했어요."가 나오면 Android Studio의 Logcat에서 `SafeZone`으로 검색합니다.
+**연결이 안 될 때**: 위치 확인 화면에 "위치를 확인하지 못했어요." 또는 분석 중 화면에 "분석하지 못했어요."가 나오면 Android Studio의 Logcat에서 `SafeZone`으로 검색합니다.
 서버가 꺼져 있는지, 주소가 틀렸는지, 서버가 어떤 오류(404 등)를 돌려줬는지가 경고 로그로 남습니다.
 
 ## 프로젝트 구조
@@ -106,12 +114,17 @@ app/src/main/java/com/example/safezone/
 ├── navigation/AppNavigation.kt      화면 경로, 화면 이동, 사용할 분석기 지정
 ├── data/
 │   ├── model/AnalysisResult.kt      결과 상태(SAFE/UNSAFE/UNCERTAIN), 근거, 근거 이미지, 임시 결과 여부
-│   └── analysis/
-│       ├── PhotoAnalyzer.kt         분석기 인터페이스
-│       ├── RemotePhotoAnalyzer.kt   AI 서버에 사진을 보내는 분석기, 응답 변환
-│       └── MockPhotoAnalyzer.kt     UI 확인용 임시 분석기
+│   ├── analysis/
+│   │   ├── PhotoAnalyzer.kt         분석기 인터페이스
+│   │   ├── RemotePhotoAnalyzer.kt   AI 서버에 사진을 보내는 분석기, 응답 변환
+│   │   └── MockPhotoAnalyzer.kt     UI 확인용 임시 분석기
+│   └── location/
+│       ├── ReturnApi.kt             위치 확인·반납 완료 API, 반납 토큰(ReturnSession)
+│       └── DeviceLocationSource.kt  휴대폰 현재 위치 (LocationManager, Play 서비스 불필요)
 └── ui/
     ├── home/HomeScreen.kt
+    ├── location/LocationCheckScreen.kt  반납 위치 확인 (권한 요청 포함)
+    ├── location/ReturnViewModel.kt      위치 확인·반납 완료 상태
     ├── photo/PhotoSelectScreen.kt   촬영
     ├── photo/PhotoPreviewScreen.kt  사진 확인
     ├── analysis/AnalyzingScreen.kt
@@ -182,6 +195,8 @@ sdk.dir=C\:\\Users\\<사용자>\\AppData\\Local\\Android\\Sdk
 
 - 킥보드 인식 모델의 실사진 검증 — 공개 데이터셋으로 학습한 첫 버전(시험 mask mAP50 0.671, 국내 보도 사진 0.812, 목표 0.85)이고, 넘어진 킥보드는 학습 데이터가 없어 판정하지 못함
 - 에뮬레이터·휴대폰에서 실제 AI 서버에 연결한 확인 — 기기에서는 가짜 서버로, 실제 서버와 모델은 컴퓨터에서 앱의 통신 코드만 떼어 연결해 확인함
+- 위치 확인 단계의 빌드·실행 확인 — 코드와 단위 테스트(LocationFlowTest, ReturnViewModelTest, RemoteReturnApiTest)는 작성했지만 Android SDK 가 없는 PC 에서 작성해 아직 빌드·실행해 보지 않음
+- 기기 번호 입력 — 지금은 위치 확인 때 고정값(`SAFEZONE-APP`)을 보냄
 - 홈 화면의 디자인된 일러스트 (현재는 아이콘으로 만든 임시 그림)
 - 출시용 빌드 설정 (코드 축소 미적용, 디버그 APK 약 24MB)
 

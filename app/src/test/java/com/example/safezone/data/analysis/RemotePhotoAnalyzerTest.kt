@@ -2,6 +2,7 @@ package com.example.safezone.data.analysis
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.safezone.data.location.ReturnSession
 import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
 import com.sun.net.httpserver.HttpServer
@@ -88,6 +89,24 @@ class RemotePhotoAnalyzerTest {
         assertEquals(ParkingStatus.SAFE, r.status)
         assertEquals("/api/analyze", receivedPath)
         val body = String(receivedBody)
+        assertTrue(body.contains("name=\"file\"") && body.contains("JPEGDATA"))
+    }
+
+    @Test
+    fun withReturnToken_uploadsToReturnPhotoEndpoint_withToken() = runTest {
+        responseBody = """{"status":"APPROVE","metrics":{},"reasons":[]}"""
+        val session = ReturnSession().apply { token = "TOKEN123" }
+        val analyzer = RemotePhotoAnalyzer(
+            serverUrl = "http://127.0.0.1:${server.address.port}/",
+            readPhoto = { "JPEGDATA".toByteArray() },
+            ioDispatcher = Dispatchers.Unconfined,
+            session = session,
+        )
+        analyzer.analyze("content://photo/1")
+
+        assertEquals("/api/return/photo", receivedPath)
+        val body = String(receivedBody)
+        assertTrue(body.contains("name=\"token\"\r\n\r\nTOKEN123\r\n"))
         assertTrue(body.contains("name=\"file\"") && body.contains("JPEGDATA"))
     }
 

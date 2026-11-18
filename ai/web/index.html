@@ -13,7 +13,7 @@
     <header class="topbar"><h1>반납하기</h1><span id="model-badge" class="badge">AI 로딩 중…</span></header>
     <div id="map"></div>
     <div class="sheet">
-      <div class="steps"><span class="on">① 위치</span><span>② 사진</span><span>③ 결제</span></div>
+      <div class="steps"><span class="on">① 위치</span><span>② 사진</span><span>③ 반납 완료</span></div>
       <label class="field">기기 번호 <input id="vehicle-id" value="KB-0427"></label>
       <p id="loc-msg" class="msg"></p>
       <button id="btn-locate" class="primary">현재 위치에서 반납하기</button>
@@ -79,24 +79,8 @@
     </div>
     <div class="sheet">
       <button id="btn-retake" class="secondary">다시 촬영</button>
-      <button id="btn-to-pay" class="primary" hidden>결제하기</button>
+      <button id="btn-complete" class="primary" hidden>반납 완료하기</button>
     </div>
-  </section>
-
-  <!-- ③ 결제 -->
-  <section id="screen-pay" class="screen">
-    <header class="topbar"><h1>결제</h1></header>
-    <div class="pay-body">
-      <div class="steps"><span class="on">① 위치</span><span class="on">② 사진</span><span class="on">③ 결제</span></div>
-      <dl class="receipt">
-        <dt>기기</dt><dd id="pay-vehicle"></dd>
-        <dt>반납 위치</dt><dd id="pay-zone"></dd>
-        <dt>이용 요금</dt><dd>기본 1,200원 + 12분 × 180원</dd>
-        <dt>합계</dt><dd class="total">3,360원</dd>
-      </dl>
-      <p class="msg">데모 결제입니다. 실제 결제는 이뤄지지 않아요.</p>
-    </div>
-    <div class="sheet"><button id="btn-pay" class="primary">3,360원 결제하기</button></div>
   </section>
 
   <section id="screen-done" class="screen">

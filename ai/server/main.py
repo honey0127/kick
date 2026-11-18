@@ -1,4 +1,4 @@
-"""반납 API.  순서 강제: ① GPS 위치 확인 -> ② 주차 사진 AI 판정 -> ③ 결제
+"""반납 API.  순서 강제: ① GPS 위치 확인 -> ② 주차 사진 AI 판정 -> ③ 반납 완료
 
 실행:  .venv\\Scripts\\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 """
@@ -153,13 +153,12 @@ async def check_photo(token: str = Form(...), file: UploadFile = File(...)):
     return result
 
 
-@app.post("/api/return/pay")
-def pay(body: TokenIn):
+@app.post("/api/return/complete")
+def complete(body: TokenIn):
+    """사진이 APPROVE 된 세션만 반납 완료 처리 (결제는 범위에서 뺌)."""
     s = _session(body.token, "photo_ok")
-    # TODO: 실제 PG 연동. 지금은 데모 요금으로 결제 성공 처리.
-    amount = 1200 + 180 * 12
-    s["stage"] = "paid"
-    return {"ok": True, "vehicle_id": s["vehicle_id"], "amount": amount, "receipt_id": "R" + secrets.token_hex(4).upper()}
+    s["stage"] = "done"
+    return {"ok": True, "vehicle_id": s["vehicle_id"], "zone": s["zone"], "return_id": "RT" + secrets.token_hex(4).upper()}  # zone: 위치 확인 때와 같은 형식 (지정 주차구역이면 {"name": ...}, 아니면 null)
 
 
 @app.post("/api/analyze")

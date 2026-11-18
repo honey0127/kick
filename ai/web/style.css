@@ -59,7 +59,7 @@ button { font: inherit; cursor: pointer; }
 .text-btn { background: none; border: 0; color: #bbb; padding: 12px; font-size: 14px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 
 /* result */
-.result-body, .pay-body { flex: 1; overflow-y: auto; padding: 16px; }
+.result-body { flex: 1; overflow-y: auto; padding: 16px; }
 .analyzing { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 0; color: var(--sub); }
 .spinner { width: 40px; height: 40px; border: 4px solid #dbe4ff; border-top-color: var(--blue); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -89,11 +89,9 @@ button { font: inherit; cursor: pointer; }
 .bev { margin: 10px 0 0; }
 .bev img { width: 100%; border-radius: 12px; display: block; background: #191919; }
 .bev figcaption { font-size: 12px; color: var(--sub); margin-top: 4px; }
-.metrics, .receipt { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; background: var(--card); padding: 12px; border-radius: 10px; }
-.metrics dt, .receipt dt { color: var(--sub); }
-.metrics dd, .receipt dd { margin: 0; text-align: right; }
-.receipt { font-size: 15px; margin-top: 16px; gap: 12px; }
-.receipt .total { font-weight: 800; font-size: 18px; }
+.metrics { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; background: var(--card); padding: 12px; border-radius: 10px; }
+.metrics dt { color: var(--sub); }
+.metrics dd { margin: 0; text-align: right; }
 
 .done { margin: auto; text-align: center; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; max-width: 360px; }
 .check { width: 72px; height: 72px; border-radius: 50%; background: var(--ok); color: #fff; font-size: 40px; display: flex; align-items: center; justify-content: center; }
