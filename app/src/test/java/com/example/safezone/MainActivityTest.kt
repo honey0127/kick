@@ -39,7 +39,9 @@ class MainActivityTest {
         composeRule.onNodeWithText("사진 촬영하기").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("킥보드 전체가 보이도록 촬영해 주세요.").assertIsDisplayed()
+        // 미리보기 위의 촬영 틀 안내와, 그 아래 촬영 안내 3줄
+        composeRule.onNodeWithText("킥보드 전체와 보도 양쪽 끝이 틀 안에 들어오게").assertIsDisplayed()
+        composeRule.onNodeWithText("킥보드 전체가 파란 틀 안에 들어오게 촬영해 주세요.").assertIsDisplayed()
         composeRule.onNodeWithText("2~3걸음 뒤에서 보도가 뻗은 방향으로, 양옆 보도까지 함께 촬영해 주세요.").assertIsDisplayed()
         composeRule.onNodeWithText("점자블록이나 출입구가 있다면 포함해 주세요.").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("사진 촬영").assertIsDisplayed()

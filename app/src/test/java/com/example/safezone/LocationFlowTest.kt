@@ -122,7 +122,7 @@ class LocationFlowTest {
         composeRule.onNodeWithText("사진 촬영하기").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("킥보드 전체가 보이도록 촬영해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("킥보드 전체가 파란 틀 안에 들어오게 촬영해 주세요.").assertIsDisplayed()
     }
 
     @Test

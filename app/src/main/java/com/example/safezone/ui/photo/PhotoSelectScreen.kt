@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -63,11 +64,16 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.safezone.ui.components.BackTopBar
 import com.example.safezone.ui.components.PrimaryButton
+import com.example.safezone.ui.theme.GuideBlue
 import java.io.File
+
+// 촬영 틀의 크기(미리보기 대비). 서버 웹 화면(ai/web)의 틀과 같은 비율이다: 좌우 8%, 위아래 4% 안쪽.
+private const val FrameWidthFraction = 0.84f
+private const val FrameHeightFraction = 0.92f
 
 /**
  * 킥보드 주차 상태를 직접 촬영하는 화면.
- * 카메라 권한이 있으면 미리보기와 촬영 버튼을, 없으면 권한 안내를 보여 준다.
+ * 카메라 권한이 있으면 미리보기(촬영 틀 포함)와 촬영 버튼을, 없으면 권한 안내를 보여 준다.
  */
 @Composable
 fun PhotoSelectScreen(
@@ -175,6 +181,7 @@ private fun CameraCapture(
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+            CaptureFrame(modifier = Modifier.fillMaxSize())
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -207,6 +214,38 @@ private fun CameraCapture(
     }
 }
 
+/**
+ * 미리보기 위에 겹쳐 그리는 촬영 틀.
+ *
+ * 너무 가까이에서 찍으면 킥보드가 화면 끝에서 잘리거나 보도 양쪽 끝이 보이지 않아 서버가 판단을 보류한다
+ * (VEHICLE_CUT, TRUNCATED). 그래서 화면 끝보다 안쪽에 틀을 그려, 킥보드 전체와 보도 양쪽 끝이 그 안에 들어올 만큼
+ * 물러나서 찍도록 안내한다. 틀을 킥보드로 꽉 채우라는 뜻이 아니다.
+ */
+@Composable
+private fun CaptureFrame(modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(FrameWidthFraction)
+                .fillMaxHeight(FrameHeightFraction)
+                .border(3.dp, GuideBlue, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            // 미리보기 밝기와 상관없이 읽히도록 어두운 바탕 위에 흰 글자로 쓴다.
+            Text(
+                text = "킥보드 전체와 보도 양쪽 끝이 틀 안에 들어오게",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun CaptureGuide(modifier: Modifier = Modifier) {
     Column(
@@ -214,7 +253,7 @@ private fun CaptureGuide(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         listOf(
-            "킥보드 전체가 보이도록 촬영해 주세요.",
+            "킥보드 전체가 파란 틀 안에 들어오게 촬영해 주세요.",
             "2~3걸음 뒤에서 보도가 뻗은 방향으로, 양옆 보도까지 함께 촬영해 주세요.",
             "점자블록이나 출입구가 있다면 포함해 주세요.",
         ).forEach { guide ->

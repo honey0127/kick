@@ -12,3 +12,7 @@ val Danger = Color(0xFFE5484D)
 
 // 명세에 없는 보조 색: 보조 버튼 테두리처럼 아주 연한 구분선에만 쓴다.
 val BorderGray = Color(0xFFE5E8EB)
+
+// 촬영 화면의 틀 색. AI 서버의 재촬영 안내가 "파란 틀 안에 들어오게"라고 말하므로 파란색으로 그린다
+// (서버 웹 화면 ai/web 의 틀과 같은 색).
+val GuideBlue = Color(0xFF1A73FF)
