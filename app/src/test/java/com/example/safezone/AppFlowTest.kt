@@ -1,11 +1,14 @@
 package com.example.safezone
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,6 +21,7 @@ import com.example.safezone.data.analysis.MockPhotoAnalyzer
 import com.example.safezone.navigation.AppNavigation
 import com.example.safezone.ui.theme.SafeZoneTheme
 import org.junit.After
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -26,7 +30,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowLooper
 
 /**
- * 핵심 사용자 흐름을 처음부터 끝까지 확인한다: 사진 선택 → 사진 확인 → 분석 진행 → 결과 확인.
+ * 서버 주소를 설정하지 않은 경우(임시 분석기)의 사용자 흐름을 확인한다:
+ * 홈 → 촬영 화면 또는 사진 선택 → 사진 확인 → 분석 진행 → 결과 확인.
  * 갤러리(Photo Picker)는 시스템 앱이라 테스트에서 열 수 없으므로, 사용자가 사진을 고른 결과를 직접 넣어 준다.
  *
  * 분석기는 항상 임시 분석기(MockPhotoAnalyzer)를 넣는다. MainActivity를 그대로 띄우면 PC에 설정한
@@ -74,6 +79,35 @@ class AppFlowTest {
     private fun finishAnalysis() {
         ShadowLooper.idleMainLooper(3, java.util.concurrent.TimeUnit.SECONDS)
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun cameraButton_withPermission_showsFrameGuideAndShutter() {
+        shadowOf(composeRule.activity.application).grantPermissions(Manifest.permission.CAMERA)
+
+        composeRule.onNodeWithText("사진 촬영하기").performClick()
+        composeRule.waitForIdle()
+
+        // 미리보기 위의 촬영 틀 안내와, 그 아래 촬영 안내 3줄
+        composeRule.onNodeWithText("킥보드 전체와 보도 양쪽 끝이 틀 안에 들어오게").assertIsDisplayed()
+        composeRule.onNodeWithText("킥보드 전체가 파란 틀 안에 들어오게 촬영해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("2~3걸음 뒤에서 보도가 뻗은 방향으로, 양옆 보도까지 함께 촬영해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("점자블록이나 출입구가 있다면 포함해 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("사진 촬영").assertIsDisplayed()
+    }
+
+    @Test
+    fun galleryButton_launchesPhotoPicker() {
+        composeRule.onNodeWithText("갤러리에서 선택하기").performClick()
+        composeRule.waitForIdle()
+
+        val started = shadowOf(composeRule.activity).nextStartedActivityForResult
+        assertNotNull("갤러리 버튼이 사진 선택 화면을 열지 않았습니다", started)
+        // 기기 버전에 따라 Photo Picker 또는 문서 선택기로 열린다. 둘 다 이미지 선택용이다.
+        val action = started.intent.action
+        assert(action == MediaStore.ACTION_PICK_IMAGES || action == Intent.ACTION_OPEN_DOCUMENT) {
+            "예상하지 못한 intent action: $action"
+        }
     }
 
     @Test
