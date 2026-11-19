@@ -42,7 +42,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import com.example.safezone.data.location.hasLocationPermission
+import com.example.safezone.data.location.LocationPermission
+import com.example.safezone.data.location.locationPermission
 import com.example.safezone.ui.components.BackTopBar
 import com.example.safezone.ui.components.PrimaryButton
 import com.example.safezone.ui.theme.SafeZoneTheme
@@ -56,6 +57,9 @@ private val LOCATION_PERMISSIONS = arrayOf(
  * 반납 순서 ① 위치 확인 화면. 위치 권한을 받은 뒤 현재 위치가 반납 가능한 곳인지 서버에 묻는다.
  * 통과하면 다음 화면으로 넘어가는 일은 호출하는 쪽(AppNavigation)이 맡는다.
  *
+ * 주차 구역을 가리려면 '정확한 위치' 권한이 필요하다. Android 12 이상에서 사용자가 '대략적 위치'만
+ * 허용하면 오차가 km 단위라 서버가 항상 "GPS 정확도가 낮아요"로 거절하므로, 위치를 묻기 전에 권한부터 안내한다.
+ *
  * @param onCheck 권한이 있을 때 위치 확인을 시작한다 (ReturnViewModel.check)
  */
 @Composable
@@ -68,16 +72,19 @@ fun LocationCheckScreen(
     val context = LocalContext.current
     val activity = LocalActivity.current
 
-    var hasPermission by remember { mutableStateOf(context.hasLocationPermission()) }
+    var permission by remember { mutableStateOf(context.locationPermission()) }
+    val hasPermission = permission == LocationPermission.PRECISE
     var requestedOnEntry by rememberSaveable { mutableStateOf(false) }
     // 시스템이 더 이상 권한 요청 창을 띄우지 않는 상태 (보통 두 번 거부한 경우) → 설정 화면으로 안내한다.
     var blockedBySystem by rememberSaveable { mutableStateOf(false) }
 
     val requestPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { grants ->
-        hasPermission = grants.values.any { it }
-        blockedBySystem = !hasPermission && activity != null &&
+    ) { _ ->
+        // '대략적 위치'만 고른 경우 요청 결과에는 허용이 하나 들어 있지만 정확한 위치는 여전히 없다.
+        // 그래서 결과 대신 지금 실제로 가진 권한을 다시 읽는다.
+        permission = context.locationPermission()
+        blockedBySystem = permission != LocationPermission.PRECISE && activity != null &&
             !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
@@ -90,7 +97,7 @@ fun LocationCheckScreen(
     }
     // 설정 앱에서 권한을 켜고 돌아온 경우를 반영한다.
     LifecycleResumeEffect(Unit) {
-        hasPermission = context.hasLocationPermission()
+        permission = context.locationPermission()
         onPauseOrDispose { }
     }
     // 권한이 생기면 위치 확인을 시작한다.
@@ -117,6 +124,15 @@ fun LocationCheckScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 when {
+                    permission == LocationPermission.APPROXIMATE -> Status(
+                        icon = Icons.Outlined.LocationOff, isError = true,
+                        title = "정확한 위치 권한이 필요해요.",
+                        description = if (blockedBySystem) {
+                            "설정의 위치 권한에서\n'정확한 위치 사용'을 켜 주세요."
+                        } else {
+                            "대략적인 위치로는 주차할 수 있는 곳인지\n확인할 수 없어요."
+                        },
+                    )
                     !hasPermission -> Status(
                         icon = Icons.Outlined.LocationOff, isError = true,
                         title = "위치 권한이 필요해요.",
@@ -147,7 +163,11 @@ fun LocationCheckScreen(
 
             when {
                 !hasPermission -> PrimaryButton(
-                    text = if (blockedBySystem) "설정에서 허용하기" else "위치 권한 허용하기",
+                    text = when {
+                        blockedBySystem -> "설정에서 허용하기"
+                        permission == LocationPermission.APPROXIMATE -> "정확한 위치 허용하기"
+                        else -> "위치 권한 허용하기"
+                    },
                     onClick = {
                         if (blockedBySystem) {
                             context.startActivity(
