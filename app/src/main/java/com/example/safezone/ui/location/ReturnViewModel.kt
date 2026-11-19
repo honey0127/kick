@@ -79,7 +79,8 @@ class ReturnViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                LocationUiState.Failed("위치를 확인하지 못했어요.\n인터넷 연결을 확인하고 다시 시도해 주세요.")
+                // 화면 제목이 이미 "위치를 확인하지 못했어요."이므로 여기서는 원인만 적는다. 자세한 원인은 Logcat 에 남는다.
+                LocationUiState.Failed("서버에 연결하지 못했어요.\n인터넷 연결을 확인하고 다시 시도해 주세요.")
             }
         }
     }
