@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ElectricScooter
+import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,9 @@ import com.example.safezone.ui.theme.SafeZoneTheme
 /**
  * 분석 진행 화면. 분석 중에는 로딩을, 실패하면 오류 안내와 재시도 버튼을 보여 준다.
  * 분석 성공 시 결과 화면으로 넘어가는 일은 호출하는 쪽(AppNavigation)이 맡는다.
+ *
+ * @param isSessionExpired 반납 토큰이 만료되는 등 위치 확인부터 다시 해야 하는 경우.
+ *   다시 시도해도 실패하므로 재시도 대신 "위치 다시 확인하기"를 보여 준다. isFailed 보다 먼저 본다.
  */
 @Composable
 fun AnalyzingScreen(
@@ -39,6 +43,8 @@ fun AnalyzingScreen(
     onRetryClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isSessionExpired: Boolean = false,
+    onRecheckLocationClick: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         BackTopBar(onBackClick = onBackClick)
@@ -58,25 +64,35 @@ fun AnalyzingScreen(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (isFailed) {
-                    StatusIcon(icon = Icons.Outlined.ErrorOutline, showProgress = false)
-                    Spacer(modifier = Modifier.height(28.dp))
-                    Title("분석하지 못했어요.")
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Description("일시적인 문제가 생겼어요.\n잠시 후 다시 시도해 주세요.")
-                } else {
-                    StatusIcon(icon = Icons.Outlined.ElectricScooter, showProgress = true)
-                    Spacer(modifier = Modifier.height(28.dp))
-                    Title("주차 상태를 확인하고 있어요.")
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Description("보행 공간을 방해하는 요소가 있는지\n분석하고 있습니다.")
+                when {
+                    isSessionExpired -> {
+                        StatusIcon(icon = Icons.Outlined.LocationOff, showProgress = false)
+                        Spacer(modifier = Modifier.height(28.dp))
+                        Title("위치 확인을 다시 해 주세요.")
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Description("위치 확인 후 시간이 지났거나\n사진 판정 횟수를 넘었어요.")
+                    }
+                    isFailed -> {
+                        StatusIcon(icon = Icons.Outlined.ErrorOutline, showProgress = false)
+                        Spacer(modifier = Modifier.height(28.dp))
+                        Title("분석하지 못했어요.")
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Description("일시적인 문제가 생겼어요.\n잠시 후 다시 시도해 주세요.")
+                    }
+                    else -> {
+                        StatusIcon(icon = Icons.Outlined.ElectricScooter, showProgress = true)
+                        Spacer(modifier = Modifier.height(28.dp))
+                        Title("주차 상태를 확인하고 있어요.")
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Description("보행 공간을 방해하는 요소가 있는지\n분석하고 있습니다.")
+                    }
                 }
             }
 
-            if (isFailed) {
-                PrimaryButton(text = "다시 시도하기", onClick = onRetryClick)
-            } else {
-                Text(
+            when {
+                isSessionExpired -> PrimaryButton(text = "위치 다시 확인하기", onClick = onRecheckLocationClick)
+                isFailed -> PrimaryButton(text = "다시 시도하기", onClick = onRetryClick)
+                else -> Text(
                     text = "잠시만 기다려 주세요.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -1,6 +1,7 @@
 package com.example.safezone.ui.analysis
 
 import com.example.safezone.data.analysis.PhotoAnalyzer
+import com.example.safezone.data.location.ReturnSessionExpiredException
 import com.example.safezone.data.model.AnalysisResult
 import com.example.safezone.data.model.ParkingStatus
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +86,21 @@ class AnalysisViewModelTest {
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value is AnalysisUiState.Success)
         assertEquals(listOf("content://photo/1", "content://photo/1"), analyzer.requestedUris)
+    }
+
+    @Test
+    fun expiredReturnSession_showsSessionExpired_insteadOfRetry() = runTest(dispatcher) {
+        // 서버가 반납 토큰을 더 받지 않는 경우: 같은 사진으로 다시 시도해도 실패하므로 별도 상태로 알린다.
+        val analyzer = object : PhotoAnalyzer {
+            override suspend fun analyze(photoUri: String): AnalysisResult =
+                throw ReturnSessionExpiredException("반납 세션 종료 (410)")
+        }
+        val viewModel = newViewModel(analyzer)
+
+        viewModel.analyze("content://photo/1")
+        advanceUntilIdle()
+
+        assertEquals(AnalysisUiState.SessionExpired, viewModel.uiState.value)
     }
 
     @Test

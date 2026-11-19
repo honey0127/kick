@@ -3,6 +3,8 @@ package com.example.safezone.data.analysis
 import android.util.Base64
 import android.util.Log
 import com.example.safezone.data.location.ReturnSession
+import com.example.safezone.data.location.ReturnSessionExpiredException
+import com.example.safezone.data.location.isReturnSessionOver
 import com.example.safezone.data.model.AnalysisResult
 import com.example.safezone.data.model.EvidenceImage
 import com.example.safezone.data.model.EvidenceImageKind
@@ -23,9 +25,12 @@ private const val TAG = "SafeZone"
 
 /**
  * AI 분석 서버(ai/ 폴더의 FastAPI)에 사진을 보내 판정을 받는다.
- * 위치 확인을 통과해 session 에 반납 토큰이 있으면 반납 순서용 /api/return/photo 로 보낸다
- * (서버가 위치 확인 여부와 판정 횟수를 검사한다).
- * 토큰이 없으면 /api/analyze 로 보내는데, 서버를 KICK_OPEN_ANALYZE=1 (또는 KICK_DEV=1) 로 실행해야 열린다.
+ *
+ * - session 을 넣은 경우(앱의 반납 순서): 위치 확인으로 받은 반납 토큰과 함께 /api/return/photo 로 보낸다
+ *   (서버가 위치 확인 여부와 판정 횟수를 검사한다). 토큰이 없거나 서버가 토큰을 더 받지 않으면
+ *   [ReturnSessionExpiredException] 을 던진다. 위치 확인을 건너뛰게 되는 /api/analyze 로는 보내지 않는다.
+ * - session 을 넣지 않은 경우(위치 확인 단계 없이 분석기만 쓰는 테스트): /api/analyze 로 보낸다.
+ *   서버를 KICK_OPEN_ANALYZE=1 (또는 KICK_DEV=1) 로 실행해야 열린다.
  *
  * @param serverUrl 예: 에뮬레이터에서 PC 서버는 "http://10.0.2.2:8000"
  * @param readPhoto 사진 URI -> 파일 바이트 (앱에서는 ContentResolver 로 읽는다)
@@ -55,7 +60,10 @@ class RemotePhotoAnalyzer(
 
     private fun upload(photo: ByteArray): String {
         val boundary = "----SafeZone" + UUID.randomUUID().toString().replace("-", "")
-        val token = session?.token
+        // 반납 순서에서는 토큰이 꼭 있어야 한다. 없으면 요청을 보내지 않고 위치 확인부터 다시 하게 한다.
+        val token = session?.let {
+            it.token ?: throw ReturnSessionExpiredException("반납 토큰이 없음 (위치 확인 필요)")
+        }
         val path = if (token != null) "/api/return/photo" else "/api/analyze"
         val conn = URL(serverUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         try {
@@ -84,6 +92,10 @@ class RemotePhotoAnalyzer(
             val code = conn.responseCode
             if (code !in 200..299) {
                 val detail = conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (token != null && isReturnSessionOver(code)) {
+                    session?.clearIfCurrent(token)
+                    throw ReturnSessionExpiredException("반납 세션 종료 ($code) $detail")
+                }
                 throw IOException("분석 서버 오류 ($code) $detail")
             }
             return conn.inputStream.bufferedReader().use { it.readText() }

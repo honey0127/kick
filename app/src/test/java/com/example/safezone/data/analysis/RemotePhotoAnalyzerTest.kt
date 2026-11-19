@@ -3,6 +3,7 @@ package com.example.safezone.data.analysis
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.safezone.data.location.ReturnSession
+import com.example.safezone.data.location.ReturnSessionExpiredException
 import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
 import com.sun.net.httpserver.HttpServer
@@ -12,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -108,6 +110,55 @@ class RemotePhotoAnalyzerTest {
         val body = String(receivedBody)
         assertTrue(body.contains("name=\"token\"\r\n\r\nTOKEN123\r\n"))
         assertTrue(body.contains("name=\"file\"") && body.contains("JPEGDATA"))
+    }
+
+    /** 앱의 반납 순서처럼 반납 토큰(session)을 함께 쓰는 분석기. */
+    private fun analyzerWith(session: ReturnSession) = RemotePhotoAnalyzer(
+        serverUrl = "http://127.0.0.1:${server.address.port}/",
+        readPhoto = { "JPEGDATA".toByteArray() },
+        ioDispatcher = Dispatchers.Unconfined,
+        session = session,
+    )
+
+    @Test
+    fun returnFlowWithoutToken_sendsNothing_andAsksForLocationCheck() = runTest {
+        // 반납 순서인데 토큰이 없으면(위치 확인을 안 했거나 이미 끝난 토큰) /api/analyze 로 돌려 보내지 않는다.
+        try {
+            analyzerWith(ReturnSession()).analyze("content://photo/1")
+            fail("예외가 나야 한다")
+        } catch (e: ReturnSessionExpiredException) {
+            assertEquals("서버에 아무 요청도 가지 않아야 한다", "", receivedPath)
+        }
+    }
+
+    @Test
+    fun serverRejectsToken_becomesSessionExpired_andForgetsToken() = runTest {
+        // 410 만료, 429 사진 판정 횟수 초과, 409 이미 끝난 반납: 모두 위치 확인부터 다시 해야 한다.
+        for (code in listOf(410, 429, 409)) {
+            responseCode = code
+            responseBody = """{"detail":"반납 세션이 만료됐어요. 위치 확인부터 다시 해주세요."}"""
+            val session = ReturnSession().apply { token = "TOKEN123" }
+            try {
+                analyzerWith(session).analyze("content://photo/1")
+                fail("예외가 나야 한다 ($code)")
+            } catch (e: ReturnSessionExpiredException) {
+                assertNull("쓸 수 없는 토큰은 지워야 한다 ($code)", session.token)
+            }
+        }
+    }
+
+    @Test
+    fun otherServerError_withToken_keepsToken_soRetryCanWork() = runTest {
+        responseCode = 500
+        responseBody = """{"detail":"Internal Server Error"}"""
+        val session = ReturnSession().apply { token = "TOKEN123" }
+        try {
+            analyzerWith(session).analyze("content://photo/1")
+            fail("예외가 나야 한다")
+        } catch (e: IOException) {
+            assertFalse("일시적인 서버 오류는 '위치 확인부터 다시'가 아니다", e is ReturnSessionExpiredException)
+            assertEquals("TOKEN123", session.token)
+        }
     }
 
     @Test

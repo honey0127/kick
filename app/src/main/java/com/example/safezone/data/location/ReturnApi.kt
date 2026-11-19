@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -34,7 +35,24 @@ class ReturnSession {
         token = null
         zone = null
     }
+
+    /** [usedToken] 이 아직 현재 토큰일 때만 지운다. 그 사이 새 위치 확인으로 받은 토큰은 남긴다. */
+    fun clearIfCurrent(usedToken: String) {
+        if (token == usedToken) clear()
+    }
 }
+
+/**
+ * 반납 토큰이 없거나 더 쓸 수 없어서 위치 확인부터 다시 해야 한다는 뜻.
+ * 같은 요청을 다시 보내도 계속 실패하므로, 화면은 "다시 시도" 대신 위치 확인으로 돌아가는 안내를 보여 준다.
+ */
+class ReturnSessionExpiredException(message: String) : IOException(message)
+
+/**
+ * 서버가 "이 반납 토큰은 더 쓸 수 없다"고 답할 때의 HTTP 상태 코드인지.
+ * 409: 순서가 맞지 않음(이미 반납 완료한 토큰 등), 410: 만료(위치 확인 후 10분), 429: 사진 판정 횟수 초과.
+ */
+internal fun isReturnSessionOver(httpCode: Int): Boolean = httpCode == 409 || httpCode == 410 || httpCode == 429
 
 /** 반납 순서 중 위치 확인과 반납 완료를 맡는다. 사진 판정은 PhotoAnalyzer 가 맡는다. */
 interface ReturnApi {
@@ -62,13 +80,22 @@ class RemoteReturnApi(
             .put("lat", location.latitude)
             .put("lon", location.longitude)
         location.accuracyMeters?.let { body.put("accuracy", it.toDouble()) }
-        parseLocationResponse(postJson("/api/return/location", body), session)
+        val json = postJson("/api/return/location", body)
+        // 사용자가 위치 확인을 취소한 뒤 늦게 도착한 응답으로 반납 토큰을 바꾸지 않는다.
+        ensureActive()
+        parseLocationResponse(json, session)
     }
 
     override suspend fun complete() = withContext(ioDispatcher) {
         val token = session.token ?: return@withContext
-        postJson("/api/return/complete", JSONObject().put("token", token))
-        session.clear()
+        try {
+            postJson("/api/return/complete", JSONObject().put("token", token))
+        } catch (e: ReturnSessionExpiredException) {
+            session.clearIfCurrent(token)
+            throw e
+        }
+        // 응답을 기다리는 사이 새 위치 확인으로 토큰이 바뀌었다면 새 토큰은 지우지 않는다.
+        session.clearIfCurrent(token)
     }
 
     private fun postJson(path: String, body: JSONObject): String {
@@ -83,6 +110,7 @@ class RemoteReturnApi(
             val code = conn.responseCode
             if (code !in 200..299) {
                 val detail = conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (isReturnSessionOver(code)) throw ReturnSessionExpiredException("반납 세션 종료 ($code) $detail")
                 throw IOException("반납 서버 오류 ($code) $detail")
             }
             return conn.inputStream.bufferedReader().use { it.readText() }

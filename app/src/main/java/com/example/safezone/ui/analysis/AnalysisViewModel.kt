@@ -3,6 +3,7 @@ package com.example.safezone.ui.analysis
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.safezone.data.analysis.PhotoAnalyzer
+import com.example.safezone.data.location.ReturnSessionExpiredException
 import com.example.safezone.data.model.AnalysisResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -18,6 +19,9 @@ sealed interface AnalysisUiState {
     data object Analyzing : AnalysisUiState
     data class Success(val result: AnalysisResult) : AnalysisUiState
     data object Failed : AnalysisUiState
+
+    /** 반납 토큰이 만료되는 등 위치 확인부터 다시 해야 하는 경우. 같은 사진으로 다시 시도해도 실패한다. */
+    data object SessionExpired : AnalysisUiState
 }
 
 /**
@@ -45,6 +49,8 @@ class AnalysisViewModel(
                 AnalysisUiState.Success(analyzer.analyze(photoUri))
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: ReturnSessionExpiredException) {
+                AnalysisUiState.SessionExpired
             } catch (e: Exception) {
                 AnalysisUiState.Failed
             }

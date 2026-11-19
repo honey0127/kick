@@ -9,6 +9,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
@@ -119,8 +122,12 @@ fun AppNavigation(
     val returnViewModel: ReturnViewModel? =
         if (api != null && source != null) viewModel { ReturnViewModel(api, source) } else null
 
+    // 마지막으로 고른 사진 방법. 반납 토큰이 만료돼 위치 확인부터 다시 할 때 같은 방법으로 이어 간다.
+    var lastTarget by rememberSaveable { mutableStateOf(PhotoSource.CAMERA) }
+
     // 결과 화면에서 다시 찍으러 갈 때: 홈 위에 촬영 화면만 남긴다.
     val retakePhoto = {
+        lastTarget = PhotoSource.CAMERA
         navController.navigate(Routes.PHOTO_SELECT) { popUpTo(Routes.HOME) }
     }
     val goHome = {
@@ -144,16 +151,19 @@ fun AppNavigation(
         pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
-    // 홈에서 반납을 시작할 때: 서버에 연결된 경우 위치 확인부터, 아니면 바로 사진으로.
+    // 반납을 시작할 때(홈에서, 또는 반납 토큰이 만료돼 처음부터 다시 할 때):
+    // 서버에 연결된 경우 위치 확인부터, 아니면 바로 사진으로.
     fun startReturn(target: PhotoSource) {
+        lastTarget = target
         if (returnViewModel == null) {
             when (target) {
-                PhotoSource.CAMERA -> navController.navigate(Routes.PHOTO_SELECT)
+                PhotoSource.CAMERA -> navController.navigate(Routes.PHOTO_SELECT) { popUpTo(Routes.HOME) }
                 PhotoSource.GALLERY -> launchPhotoPicker()
             }
         } else {
             returnViewModel.reset()
-            navController.navigate(Routes.locationCheck(target))
+            // 홈 위에 위치 확인 화면만 남긴다 (분석 중·결과 화면에서 다시 시작하면 그 화면들은 스택에서 뺀다).
+            navController.navigate(Routes.locationCheck(target)) { popUpTo(Routes.HOME) }
         }
     }
 
@@ -258,6 +268,9 @@ fun AppNavigation(
                 isFailed = state is AnalysisUiState.Failed,
                 onRetryClick = analysisViewModel::retry,
                 onBackClick = leave,
+                // 반납 토큰이 만료되면 같은 사진을 다시 보내도 서버가 받지 않는다. 위치 확인부터 다시 한다.
+                isSessionExpired = state is AnalysisUiState.SessionExpired,
+                onRecheckLocationClick = { startReturn(lastTarget) },
             )
         }
 

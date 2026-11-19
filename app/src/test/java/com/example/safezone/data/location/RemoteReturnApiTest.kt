@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,9 +21,13 @@ import java.net.InetSocketAddress
 class RemoteReturnApiTest {
 
     private lateinit var server: HttpServer
+    private var responseCode = 200
     private var responseBody = ""
     private var receivedPath = ""
     private var receivedJson = JSONObject()
+
+    /** 서버가 요청을 받은 순간(응답을 보내기 전)에 실행할 일 */
+    private var onRequest: () -> Unit = {}
 
     @Before
     fun setUp() {
@@ -30,8 +35,9 @@ class RemoteReturnApiTest {
         server.createContext("/") { ex ->
             receivedPath = ex.requestURI.path
             receivedJson = JSONObject(String(ex.requestBody.readBytes()))
+            onRequest()
             val bytes = responseBody.toByteArray()
-            ex.sendResponseHeaders(200, bytes.size.toLong())
+            ex.sendResponseHeaders(responseCode, bytes.size.toLong())
             ex.responseBody.use { it.write(bytes) }
         }
         server.start()
@@ -83,6 +89,31 @@ class RemoteReturnApiTest {
         assertEquals("/api/return/complete", receivedPath)
         assertEquals("T1", receivedJson.getString("token"))
         assertNull(session.token)
+    }
+
+    @Test
+    fun complete_withExpiredToken_throwsSessionExpired_andForgetsToken() = runTest {
+        responseCode = 410
+        responseBody = """{"detail":"반납 세션이 만료됐어요. 위치 확인부터 다시 해주세요."}"""
+        val session = ReturnSession().apply { token = "T1" }
+        try {
+            api(session).complete()
+            fail("예외가 나야 한다")
+        } catch (e: ReturnSessionExpiredException) {
+            assertNull(session.token)
+        }
+    }
+
+    @Test
+    fun complete_keepsTokenIssuedWhileWaiting() = runTest {
+        // 반납 완료 응답을 기다리는 사이 새 위치 확인으로 토큰이 바뀌었다면, 새 토큰까지 지우면 안 된다.
+        responseBody = """{"ok":true,"vehicle_id":"SAFEZONE-APP","zone":null,"return_id":"RT1"}"""
+        val session = ReturnSession().apply { token = "OLD" }
+        onRequest = { session.token = "NEW" }
+        api(session).complete()
+
+        assertEquals("OLD", receivedJson.getString("token"))
+        assertEquals("NEW", session.token)
     }
 
     @Test
