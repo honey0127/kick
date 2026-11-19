@@ -45,13 +45,16 @@ import com.example.safezone.data.model.EvidenceImage
 import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
 import com.example.safezone.ui.components.PrimaryButton
+import com.example.safezone.ui.location.CompletionUiState
 import com.example.safezone.ui.theme.SafeZoneTheme
 
 /**
  * 분석 결과 화면. SAFE / UNSAFE / UNCERTAIN을 별도 화면 없이 이 화면 하나에서 표현한다.
  *
- * @param onPrimaryClick 상태별 메인 버튼 (SAFE: 홈, UNSAFE·UNCERTAIN: 다시 촬영)
+ * @param onPrimaryClick 상태별 메인 버튼 (SAFE: 홈 또는 반납 완료, UNSAFE·UNCERTAIN: 다시 촬영)
  * @param onHomeClick UNSAFE에서 메인 버튼 아래 "홈으로" 버튼
+ * @param completion AI 서버에 연결된 반납 순서에서의 반납 완료(③) 상태. 임시 분석기처럼 반납 단계가 없으면 null.
+ *   null 이 아니고 결과가 SAFE 면 메인 버튼이 "반납 완료하기"가 되고, 처리 중·실패를 이 화면에서 보여 준다.
  */
 @Composable
 fun ResultScreen(
@@ -59,8 +62,14 @@ fun ResultScreen(
     onPrimaryClick: () -> Unit,
     onHomeClick: () -> Unit,
     modifier: Modifier = Modifier,
+    completion: CompletionUiState? = null,
 ) {
     val style = result.status.style()
+    // 양호 판정을 받았고 반납 단계가 있으면, 메인 버튼으로 서버에 반납 완료를 알린다.
+    val returnStep = if (result.status == ParkingStatus.SAFE) completion else null
+    val completionFailure = returnStep as? CompletionUiState.Failed
+    // 요청을 보내는 중이거나, 완료가 확인되어 반납 완료 화면으로 넘어가는 중에는 버튼을 다시 누를 수 없게 한다.
+    val isCompleting = returnStep is CompletionUiState.Completing || returnStep is CompletionUiState.Done
 
     Column(modifier = modifier.fillMaxSize()) {
         // ① 상단 로고 (결과 화면에서 뒤로 가면 홈으로 가므로 뒤로 가기 버튼 대신 로고를 둔다)
@@ -152,7 +161,32 @@ fun ResultScreen(
                 .padding(bottom = 24.dp, top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            PrimaryButton(text = style.buttonText, onClick = onPrimaryClick, icon = style.buttonIcon)
+            if (completionFailure != null) {
+                Text(
+                    text = if (completionFailure.sessionExpired) {
+                        "위치 확인 후 시간이 지나 반납을 완료하지 못했어요.\n위치 확인부터 다시 해 주세요."
+                    } else {
+                        "반납을 완료하지 못했어요.\n인터넷 연결을 확인하고 다시 눌러 주세요."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            when {
+                // 반납 단계가 없는 경우(임시 분석기)와 SAFE 가 아닌 결과: 상태별 기본 버튼
+                returnStep == null ->
+                    PrimaryButton(text = style.buttonText, onClick = onPrimaryClick, icon = style.buttonIcon)
+                completionFailure?.sessionExpired == true ->
+                    PrimaryButton(text = "위치 다시 확인하기", onClick = onPrimaryClick, icon = Icons.Outlined.Refresh)
+                else -> PrimaryButton(
+                    text = if (isCompleting) "반납 완료 처리 중…" else "반납 완료하기",
+                    onClick = onPrimaryClick,
+                    icon = Icons.Outlined.CheckCircle,
+                    enabled = !isCompleting,
+                )
+            }
             if (result.status == ParkingStatus.UNSAFE) {
                 Spacer(modifier = Modifier.height(4.dp))
                 TextButton(onClick = onHomeClick) {

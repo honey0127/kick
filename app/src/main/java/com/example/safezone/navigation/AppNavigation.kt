@@ -38,12 +38,14 @@ import com.example.safezone.ui.analysis.AnalysisUiState
 import com.example.safezone.ui.analysis.AnalysisViewModel
 import com.example.safezone.ui.analysis.AnalyzingScreen
 import com.example.safezone.ui.home.HomeScreen
+import com.example.safezone.ui.location.CompletionUiState
 import com.example.safezone.ui.location.LocationCheckScreen
 import com.example.safezone.ui.location.LocationUiState
 import com.example.safezone.ui.location.ReturnViewModel
 import com.example.safezone.ui.photo.PhotoPreviewScreen
 import com.example.safezone.ui.photo.PhotoSelectScreen
 import com.example.safezone.ui.result.ResultScreen
+import com.example.safezone.ui.result.ReturnDoneScreen
 
 /** 사진을 어디서 가져왔는지. "다시 선택하기"가 같은 곳으로 돌아가는 데 쓴다. */
 enum class PhotoSource { CAMERA, GALLERY }
@@ -56,6 +58,7 @@ object Routes {
     const val PHOTO_PREVIEW = "photo_preview/{source}/{uri}"
     const val ANALYZING = "analyzing"
     const val RESULT = "result"
+    const val RETURN_DONE = "return_done"
 
     /** 위치 확인 화면. 통과하면 target(촬영 또는 갤러리)으로 이어진다. */
     fun locationCheck(target: PhotoSource): String = "location_check/${target.name}"
@@ -277,6 +280,15 @@ fun AppNavigation(
         composable(Routes.RESULT) {
             val state by analysisViewModel.uiState.collectAsStateWithLifecycle()
             val result = (state as? AnalysisUiState.Success)?.result
+            // 반납 완료(③) 상태. 서버에 연결된 경우에만 있고, 임시 분석기에서는 null 이다.
+            val completion = returnViewModel?.completion?.collectAsStateWithLifecycle()?.value
+
+            // 서버가 반납 완료를 확인해 주면 반납 완료 화면으로 간다. 결과 화면은 스택에서 뺀다.
+            LaunchedEffect(completion) {
+                if (completion is CompletionUiState.Done) {
+                    navController.navigate(Routes.RETURN_DONE) { popUpTo(Routes.HOME) }
+                }
+            }
 
             if (result == null) {
                 // 앱이 백그라운드에서 종료됐다 복원된 경우 등 보여 줄 결과가 없으면 홈으로 돌아간다.
@@ -284,18 +296,34 @@ fun AppNavigation(
             } else {
                 ResultScreen(
                     result = result,
+                    completion = completion,
                     onPrimaryClick = {
                         when (result.status) {
-                            ParkingStatus.SAFE -> {
-                                // 서버에 연결된 경우 반납 완료를 알린다 (③). 임시 분석기에서는 아무것도 하지 않는다.
-                                returnViewModel?.complete()
-                                goHome()
+                            ParkingStatus.SAFE -> when {
+                                // 임시 분석기에는 반납 단계가 없다.
+                                returnViewModel == null -> goHome()
+                                // 반납 토큰이 만료돼 완료하지 못했으면 위치 확인부터 다시 한다.
+                                (completion as? CompletionUiState.Failed)?.sessionExpired == true ->
+                                    startReturn(lastTarget)
+                                // 서버에 반납 완료를 알린다 (③). 결과는 completion 으로 돌아온다.
+                                else -> returnViewModel.complete()
                             }
                             ParkingStatus.UNSAFE, ParkingStatus.UNCERTAIN -> retakePhoto()
                         }
                     },
                     onHomeClick = goHome,
                 )
+            }
+        }
+
+        composable(Routes.RETURN_DONE) {
+            val done = returnViewModel?.completion?.collectAsStateWithLifecycle()?.value as? CompletionUiState.Done
+
+            if (done == null) {
+                // 앱이 백그라운드에서 종료됐다 복원된 경우 등 보여 줄 내용이 없으면 홈으로 돌아간다.
+                LaunchedEffect(Unit) { goHome() }
+            } else {
+                ReturnDoneScreen(zone = done.zone, returnId = done.returnId, onHomeClick = goHome)
             }
         }
     }

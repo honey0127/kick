@@ -23,6 +23,13 @@ data class DeviceLocation(val latitude: Double, val longitude: Double, val accur
 data class LocationCheckResult(val ok: Boolean, val message: String, val zone: String?)
 
 /**
+ * 서버가 반납 완료를 확인해 준 결과.
+ * @property returnId 서버가 준 반납 번호 (예: "RT1E3B1846")
+ * @property zone 지정 주차구역에 반납한 경우 그 이름
+ */
+data class ReturnReceipt(val returnId: String?, val zone: String?)
+
+/**
  * 위치 확인을 통과하면 서버가 주는 반납 토큰.
  * 사진 판정(/api/return/photo)과 반납 완료(/api/return/complete) 요청에 함께 보낸다.
  * 서버는 토큰이 없거나 앞 단계를 통과하지 않은 요청을 거절하므로, 위치 확인 없이 사진만 보내 반납할 수 없다.
@@ -58,8 +65,12 @@ internal fun isReturnSessionOver(httpCode: Int): Boolean = httpCode == 409 || ht
 interface ReturnApi {
     suspend fun checkLocation(location: DeviceLocation): LocationCheckResult
 
-    /** 사진이 APPROVE 된 반납을 완료 처리한다. 위치 확인을 하지 않았으면 아무것도 하지 않는다. */
-    suspend fun complete()
+    /**
+     * 사진이 APPROVE 된 반납을 완료 처리한다.
+     * @throws ReturnSessionExpiredException 반납 토큰이 없거나 서버가 더 받지 않는 경우 (위치 확인부터 다시)
+     * @throws Exception 서버에 연결하지 못한 경우 등. 다시 시도할 수 있다.
+     */
+    suspend fun complete(): ReturnReceipt
 }
 
 /**
@@ -86,9 +97,9 @@ class RemoteReturnApi(
         parseLocationResponse(json, session)
     }
 
-    override suspend fun complete() = withContext(ioDispatcher) {
-        val token = session.token ?: return@withContext
-        try {
+    override suspend fun complete(): ReturnReceipt = withContext(ioDispatcher) {
+        val token = session.token ?: throw ReturnSessionExpiredException("반납 토큰이 없음 (위치 확인 필요)")
+        val json = try {
             postJson("/api/return/complete", JSONObject().put("token", token))
         } catch (e: ReturnSessionExpiredException) {
             session.clearIfCurrent(token)
@@ -96,6 +107,7 @@ class RemoteReturnApi(
         }
         // 응답을 기다리는 사이 새 위치 확인으로 토큰이 바뀌었다면 새 토큰은 지우지 않는다.
         session.clearIfCurrent(token)
+        parseReturnReceipt(json)
     }
 
     private fun postJson(path: String, body: JSONObject): String {
@@ -144,4 +156,18 @@ fun parseLocationResponse(json: String, session: ReturnSession): LocationCheckRe
     }
     val message = if (root.isNull("message")) "" else root.getString("message")
     return LocationCheckResult(ok = ok, message = message, zone = zone)
+}
+
+/**
+ * 반납 완료 응답 JSON -> 결과.
+ * 응답 예: {"ok": true, "vehicle_id": "SAFEZONE-APP", "zone": {"name": "북문 주차구역", ...}, "return_id": "RT1E3B1846"}
+ * zone 은 위치 확인 응답과 같은 형식이다 (지정 주차구역이면 객체, 아니면 null).
+ */
+fun parseReturnReceipt(json: String): ReturnReceipt {
+    val root = JSONObject(json)
+    return ReturnReceipt(
+        // optString 은 값이 JSON null 이면 글자 "null" 을 돌려주므로 먼저 걸러 낸다.
+        returnId = if (root.isNull("return_id")) null else root.optString("return_id").takeIf { it.isNotBlank() },
+        zone = root.optJSONObject("zone")?.optString("name")?.takeIf { it.isNotBlank() },
+    )
 }

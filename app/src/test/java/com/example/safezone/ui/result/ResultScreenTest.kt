@@ -1,6 +1,7 @@
 package com.example.safezone.ui.result
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -16,6 +17,7 @@ import com.example.safezone.data.model.AnalysisResult
 import com.example.safezone.data.model.EvidenceImage
 import com.example.safezone.data.model.EvidenceImageKind
 import com.example.safezone.data.model.ParkingStatus
+import com.example.safezone.ui.location.CompletionUiState
 import com.example.safezone.ui.theme.SafeZoneTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -43,6 +45,7 @@ class ResultScreenTest {
         findings: List<String> = emptyList(),
         isMock: Boolean = false,
         evidenceImages: List<EvidenceImage> = emptyList(),
+        completion: CompletionUiState? = null,
     ) {
         composeRule.setContent {
             SafeZoneTheme {
@@ -50,6 +53,7 @@ class ResultScreenTest {
                     result = AnalysisResult(status, findings, isMock, evidenceImages),
                     onPrimaryClick = { primaryClicks++ },
                     onHomeClick = { homeClicks++ },
+                    completion = completion,
                 )
             }
         }
@@ -63,6 +67,51 @@ class ResultScreenTest {
         composeRule.onNodeWithText("홈으로 돌아가기").performClick()
         assertEquals(1, primaryClicks)
         composeRule.onNodeWithText("홈으로").assertDoesNotExist()
+    }
+
+    @Test
+    fun safe_inReturnFlow_showsCompleteButton_insteadOfHome() {
+        // AI 서버에 연결된 반납 순서: 양호 판정을 받으면 메인 버튼으로 반납 완료를 알린다.
+        show(ParkingStatus.SAFE, completion = CompletionUiState.Idle)
+
+        composeRule.onNodeWithText("홈으로 돌아가기").assertDoesNotExist()
+        composeRule.onNodeWithText("반납 완료하기").performClick()
+        assertEquals(1, primaryClicks)
+    }
+
+    @Test
+    fun safe_whileCompleting_buttonCannotBePressedAgain() {
+        show(ParkingStatus.SAFE, completion = CompletionUiState.Completing)
+
+        composeRule.onNodeWithText("반납 완료 처리 중…").assertIsNotEnabled()
+    }
+
+    @Test
+    fun safe_completionFailed_showsReason_andKeepsCompleteButton() {
+        show(ParkingStatus.SAFE, completion = CompletionUiState.Failed(sessionExpired = false))
+
+        composeRule.onNodeWithText("반납을 완료하지 못했어요.\n인터넷 연결을 확인하고 다시 눌러 주세요.").assertIsDisplayed()
+        composeRule.onNodeWithText("반납 완료하기").assertIsDisplayed()
+    }
+
+    @Test
+    fun safe_sessionExpired_offersLocationCheckInsteadOfComplete() {
+        show(ParkingStatus.SAFE, completion = CompletionUiState.Failed(sessionExpired = true))
+
+        composeRule.onNodeWithText("위치 확인 후 시간이 지나 반납을 완료하지 못했어요.\n위치 확인부터 다시 해 주세요.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("반납 완료하기").assertDoesNotExist()
+        composeRule.onNodeWithText("위치 다시 확인하기").performClick()
+        assertEquals(1, primaryClicks)
+    }
+
+    @Test
+    fun unsafe_inReturnFlow_keepsReparkButton() {
+        // 반납 완료는 양호 판정에서만 할 수 있다.
+        show(ParkingStatus.UNSAFE, completion = CompletionUiState.Idle)
+
+        composeRule.onNodeWithText("다시 주차하기").assertIsDisplayed()
+        composeRule.onNodeWithText("반납 완료하기").assertDoesNotExist()
     }
 
     @Test

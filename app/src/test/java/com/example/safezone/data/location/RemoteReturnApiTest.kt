@@ -81,14 +81,24 @@ class RemoteReturnApiTest {
     }
 
     @Test
-    fun complete_sendsToken_andEndsSession() = runTest {
-        responseBody = """{"ok":true,"vehicle_id":"SAFEZONE-APP","zone":"북문","return_id":"RT1"}"""
+    fun complete_sendsToken_returnsReceipt_andEndsSession() = runTest {
+        responseBody = """{"ok":true,"vehicle_id":"SAFEZONE-APP","zone":{"type":"parking","name":"북문 주차구역"},"return_id":"RT1"}"""
         val session = ReturnSession().apply { token = "T1" }
-        api(session).complete()
+        val receipt = api(session).complete()
 
         assertEquals("/api/return/complete", receivedPath)
         assertEquals("T1", receivedJson.getString("token"))
+        assertEquals(ReturnReceipt(returnId = "RT1", zone = "북문 주차구역"), receipt)
         assertNull(session.token)
+    }
+
+    @Test
+    fun complete_outsideParkingZone_hasNoZoneName() = runTest {
+        // 지정 주차구역이 아닌 반납 가능 지역에서는 서버가 zone 을 null 로 보낸다.
+        responseBody = """{"ok":true,"vehicle_id":"SAFEZONE-APP","zone":null,"return_id":"RT2"}"""
+        val receipt = api(ReturnSession().apply { token = "T1" }).complete()
+
+        assertEquals(ReturnReceipt(returnId = "RT2", zone = null), receipt)
     }
 
     @Test
@@ -117,8 +127,12 @@ class RemoteReturnApiTest {
     }
 
     @Test
-    fun complete_withoutToken_sendsNothing() = runTest {
-        api(ReturnSession()).complete()
-        assertEquals("", receivedPath)
+    fun complete_withoutToken_sendsNothing_andAsksForLocationCheck() = runTest {
+        try {
+            api(ReturnSession()).complete()
+            fail("예외가 나야 한다")
+        } catch (e: ReturnSessionExpiredException) {
+            assertEquals("서버에 아무 요청도 가지 않아야 한다", "", receivedPath)
+        }
     }
 }

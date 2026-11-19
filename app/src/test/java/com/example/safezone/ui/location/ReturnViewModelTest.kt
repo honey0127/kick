@@ -4,6 +4,8 @@ import com.example.safezone.data.location.DeviceLocation
 import com.example.safezone.data.location.DeviceLocationSource
 import com.example.safezone.data.location.LocationCheckResult
 import com.example.safezone.data.location.ReturnApi
+import com.example.safezone.data.location.ReturnReceipt
+import com.example.safezone.data.location.ReturnSessionExpiredException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -28,14 +30,24 @@ class ReturnViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private class FakeApi(private val result: LocationCheckResult? = null) : ReturnApi {
+    /**
+     * @param result 위치 확인 결과. null 이면 서버에 연결하지 못한 것처럼 예외를 던진다.
+     * @param completeErrors 반납 완료를 부를 때마다 앞에서부터 하나씩 던질 예외. 다 쓰면 성공한다.
+     */
+    private class FakeApi(
+        private val result: LocationCheckResult? = null,
+        completeErrors: List<Exception> = emptyList(),
+    ) : ReturnApi {
+        private val completeErrors = completeErrors.toMutableList()
         var completed = 0
 
         override suspend fun checkLocation(location: DeviceLocation): LocationCheckResult =
             result ?: throw IOException("서버 꺼짐")
 
-        override suspend fun complete() {
+        override suspend fun complete(): ReturnReceipt {
             completed++
+            if (completeErrors.isNotEmpty()) throw completeErrors.removeAt(0)
+            return ReturnReceipt(returnId = "RT1", zone = "북문 주차구역")
         }
     }
 
@@ -77,16 +89,58 @@ class ReturnViewModelTest {
     }
 
     @Test
-    fun reset_returnsToIdle_andComplete_callsApi() = runTest(dispatcher) {
+    fun complete_showsCompleting_thenDoneWithReceipt() = runTest(dispatcher) {
         val api = FakeApi(LocationCheckResult(true, "", null))
         val vm = ReturnViewModel(api, source(here))
-        vm.check()
+        assertEquals(CompletionUiState.Idle, vm.completion.value)
+
+        vm.complete()
+        assertEquals(CompletionUiState.Completing, vm.completion.value)
+        // 처리 중에 버튼을 또 눌러도 요청은 한 번만 간다.
+        vm.complete()
         dispatcher.scheduler.advanceUntilIdle()
-        vm.reset()
-        assertEquals(LocationUiState.Idle, vm.uiState.value)
+
+        assertEquals(CompletionUiState.Done(returnId = "RT1", zone = "북문 주차구역"), vm.completion.value)
+        assertEquals(1, api.completed)
+    }
+
+    @Test
+    fun complete_withExpiredSession_needsLocationCheckAgain() = runTest(dispatcher) {
+        val api = FakeApi(completeErrors = listOf(ReturnSessionExpiredException("반납 세션 종료 (410)")))
+        val vm = ReturnViewModel(api, source(here))
 
         vm.complete()
         dispatcher.scheduler.advanceUntilIdle()
-        assertEquals(1, api.completed)
+
+        assertEquals(CompletionUiState.Failed(sessionExpired = true), vm.completion.value)
+    }
+
+    @Test
+    fun complete_whenServerUnreachable_canBeRetried() = runTest(dispatcher) {
+        val api = FakeApi(completeErrors = listOf(IOException("서버 꺼짐")))
+        val vm = ReturnViewModel(api, source(here))
+
+        vm.complete()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertEquals(CompletionUiState.Failed(sessionExpired = false), vm.completion.value)
+
+        vm.complete()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.completion.value is CompletionUiState.Done)
+        assertEquals(2, api.completed)
+    }
+
+    @Test
+    fun reset_clearsLocationResult_andCompletion() = runTest(dispatcher) {
+        val api = FakeApi(LocationCheckResult(true, "", null))
+        val vm = ReturnViewModel(api, source(here))
+        vm.check()
+        vm.complete()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        vm.reset()
+
+        assertEquals(LocationUiState.Idle, vm.uiState.value)
+        assertEquals(CompletionUiState.Idle, vm.completion.value)
     }
 }
