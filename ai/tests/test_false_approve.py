@@ -121,3 +121,93 @@ def test_same_parking_seen_along_and_across():
     _, oblique, _ = make_scene([(130, 370, 1275, 1325, 110)], cam=(-150.0, 1215.0, 150.0), pitch_deg=30.0, yaw_deg=75.0)
     v = judge(without_braille(oblique))
     assert v.status == RETAKE and "CROSS_VIEW" in codes(v), v.reasons
+
+
+# ---------------------------------------------------------------- 2. 보도 가장자리에서 떨어져 세움 (유효 점유율)
+def along_scene(vehicles):
+    """보도를 따라 찍은 모습 (tests/test_rules.py 와 같은 장면): 위쪽 절반은 건물, 아래는 왼쪽 차도 | 오른쪽 보도(x 200~630, 430px)."""
+    road = np.zeros((H, W), bool)
+    sidewalk = np.zeros((H, W), bool)
+    road[240:, :200] = True
+    sidewalk[240:, 200:630] = True
+    return flat_scene(vehicles, sidewalk, road)
+
+
+def upright(x0, x1):
+    return box_vehicle(x0, x1, 200, 440)
+
+
+def test_middle_of_sidewalk_is_not_approved():
+    # 보도 폭의 25% 만 차지하지만 한가운데라서 양옆 통로가 각각 37% 뿐 -> 예전에는 통과, 이제 보류
+    v = judge(along_scene([upright(361, 469)]))
+    assert round(v.metrics["width_occupancy"], 2) == 0.25
+    assert v.status == RETAKE and codes(v) == {"BORDER_OFF_EDGE"}, v.reasons
+
+    # 40% 를 차지하고 한가운데면 양옆 통로가 각각 30% -> 거절 (차지한 폭만 보면 여전히 60% 미만)
+    v = judge(along_scene([upright(329, 501)]))
+    assert round(v.metrics["width_occupancy"], 2) == 0.40
+    assert v.status == REJECT and codes(v) == {"OFF_EDGE"}, v.reasons
+
+
+def test_same_width_at_edge_is_still_approved():
+    # 같은 폭이라도 보도 끝에 붙여 세우면 유효 점유율 = 차지한 폭 -> 예전과 같이 통과
+    for px in (108, 172):
+        v = judge(along_scene([upright(630 - px, 630)]))
+        assert v.status == APPROVE, (px, v.reasons)
+        assert v.metrics["effective_occupancy"] == v.metrics["width_occupancy"]
+
+
+def test_small_gap_to_edge_is_still_approved():
+    # 벽에 딱 붙이지 않고 보도 폭의 5% 쯤 떨어뜨려 세운 평범한 주차는 그대로 통과 (25% + 5% = 30%)
+    v = judge(along_scene([upright(500, 608)]))
+    assert v.status == APPROVE, v.reasons
+    assert round(v.metrics["effective_occupancy"], 2) == 0.30
+
+
+def test_off_edge_hold_band():
+    # 보도 폭의 40% 를 차지한 킥보드를 가장자리에서 조금씩 떼어 놓는다: 가장 넓은 통로가 46% 통과, 44%·36% 보류, 34% 거절
+    want = {60: (APPROVE, set()), 69: (RETAKE, {"BORDER_OFF_EDGE"}), 103: (RETAKE, {"BORDER_OFF_EDGE"}), 112: (REJECT, {"OFF_EDGE"})}
+    for gap, (status, cs) in want.items():
+        v = judge(along_scene([upright(200 + gap, 200 + gap + 172)]))
+        assert (v.status, codes(v)) == (status, cs), (gap, v.metrics["effective_occupancy"])
+
+
+def test_two_scooters_splitting_the_passage():
+    # 두 대가 각각 14% 씩(합쳐 28%)만 차지해도 보도를 세 토막으로 나누면 가장 넓은 통로가 26% -> 거절
+    v = judge(along_scene([upright(300, 360), upright(470, 530)]))
+    assert v.metrics["width_occupancy"] < 0.3
+    assert v.status == REJECT and codes(v) == {"OFF_EDGE"}, v.reasons
+
+    # 같은 두 대를 양쪽 가장자리로 옮기면 가운데 통로가 66% 로 이어져 통과
+    # (차도 쪽 한 대는 바퀴 둘레가 차도에 걸치지 않게 연석에서 25px 띄움)
+    v = judge(along_scene([upright(225, 285), upright(570, 630)]))
+    assert v.status == APPROVE, v.reasons
+    assert round(v.metrics["effective_occupancy"], 2) == 0.34
+
+
+def test_sidewalk_running_out_of_frame_keeps_old_ratio():
+    """보도가 화면 밖으로 이어진 줄에서는 통로의 실제 폭을 알 수 없으므로, 좁다고 단정하지 않고 예전 점유율을 그대로 쓴다.
+
+    가까이서 찍어 보도 양 끝이 화면 밖이고 킥보드가 화면 가운데 있는 사진: 보이는 통로는 양쪽 45% 씩이지만
+    화면 밖으로 더 이어져 있어, 넓은 보도에 잘 세운 것인지 좁은 보도 한가운데인지 이 사진만으로는 알 수 없다.
+    (이 구도의 가운데 주차는 여전히 걸러내지 못한다. 보도 끝이 보이게 찍은 사진에서만 걸러진다.)
+    """
+    yy, xx = np.mgrid[:H, :W]
+    half = 60 + (yy - 240) * 3.0  # test_along_view_wide_sidewalk_still_approved 와 같은 보도
+    sidewalk = (yy >= 240) & (np.abs(xx - 320) <= half)
+    v = judge(flat_scene([box_vehicle(288, 352, 200, 440)], sidewalk, np.zeros((H, W), bool)))
+    assert v.metrics["frame_span"] > 0.5
+    assert v.metrics["effective_occupancy"] == v.metrics["width_occupancy"]
+    assert v.status == APPROVE, v.reasons
+
+
+def test_middle_parking_in_perspective():
+    """원근 장면(3m 보도, 폭 50cm 킥보드): 벽 쪽 가장자리면 통과, 한가운데면 양옆이 125cm 씩(42%)이라 보류."""
+    _, edge, _ = make_scene([(340, 390, 400, 510, 110)])
+    v = judge(without_braille(edge))
+    assert v.status == APPROVE, v.reasons
+
+    _, middle, _ = make_scene([(225, 275, 400, 510, 110)])
+    v = judge(without_braille(middle))
+    assert v.metrics["width_occupancy"] < 0.3  # 차지한 폭만 보면 통과였다
+    assert v.status == RETAKE and codes(v) == {"BORDER_OFF_EDGE"}, (v.reasons, v.metrics)
