@@ -6,9 +6,11 @@
 합성 마스크는 규칙이 의도대로 움직이는지만 확인한다. 실제 모델이 그리는 마스크에서
 얼마나 자주 걸리는지(정상 사진의 보류율)는 직접 찍은 사진으로 training/evaluate.py 를 돌려야 알 수 있다.
 """
+import cv2
 import numpy as np
 
-from server.rules import APPROVE, REJECT, RETAKE, Scene, Vehicle, judge
+from server.ground import estimate_ground_scale
+from server.rules import APPROVE, REJECT, RETAKE, Scene, Thresholds, Vehicle, judge
 from tests.synth import make_scene
 
 H, W = 480, 640
@@ -211,3 +213,101 @@ def test_middle_parking_in_perspective():
     v = judge(without_braille(middle))
     assert v.metrics["width_occupancy"] < 0.3  # 차지한 폭만 보면 통과였다
     assert v.status == RETAKE and codes(v) == {"BORDER_OFF_EDGE"}, (v.reasons, v.metrics)
+
+
+# ---------------------------------------------------------------- 3. 바퀴 앞 바닥을 모델이 알아보지 못함
+def curb_scene(veh, road_seen=True, road_until=200):
+    """along_scene 과 같은 장면. road_seen=False 면 바닥 모델이 차도를 놓친 상황(차도 자리가 '인식 안 됨')."""
+    road = np.zeros((H, W), bool)
+    sidewalk = np.zeros((H, W), bool)
+    if road_seen:
+        road[240:, :road_until] = True
+    sidewalk[240:, 200:630] = True
+    return flat_scene([veh], sidewalk, road)
+
+
+def test_curb_straddle_with_missed_road_is_held():
+    # 킥보드(x 150~250)가 연석(x=200)에 반쯤 걸쳐 있다
+    seen = judge(curb_scene(upright(150, 250)))
+    assert seen.status == REJECT and "ON_ROAD" in codes(seen), seen.reasons  # 차도를 찾았으면 거절
+
+    # 같은 장면에서 모델이 차도를 놓치면: 예전에는 인식된 보도만 보고 통과, 이제 보류
+    missed = judge(curb_scene(upright(150, 250), road_seen=False))
+    assert missed.metrics["road_overlap"] == 0 and missed.metrics["width_occupancy"] < 0.3
+    assert missed.metrics["ground_support"] == 0.5  # 접지부 열의 절반만 앞 바닥이 인식됨
+    assert missed.status == RETAKE and codes(missed) == {"UNKNOWN_GROUND"}, missed.reasons
+
+
+def test_parked_on_missed_road_next_to_curb_is_held():
+    # 연석 바로 옆 차도 위(x 130~190)에 세웠는데 모델이 차도를 놓친 경우: 예전에는 옆의 보도와 한 줄로 이어져 통과됐다
+    v = judge(curb_scene(upright(130, 190), road_seen=False))
+    assert v.metrics["ground_support"] == 0
+    assert v.status == RETAKE and codes(v) == {"UNKNOWN_GROUND"}, v.reasons
+
+
+def test_wall_side_parking_is_not_held():
+    # 보도 끝(x=630, 그 너머는 벽이라 인식 안 됨)에 붙여 세운 정상 주차: 옆·뒤가 인식 안 돼도 바퀴 앞 바닥은 보도
+    v = judge(curb_scene(upright(570, 630)))
+    assert v.metrics["ground_support"] == 1.0
+    assert v.status == APPROVE, v.reasons
+
+
+def test_ground_support_threshold():
+    # 폭 100px 접지부가 보도 끝(x=500) 밖의 인식 안 된 바닥으로 나간다: 30% 나가면 통과(인식 70%), 50% 나가면 보류(인식 50%)
+    for x0, support, status in ((430, 0.7, APPROVE), (450, 0.5, RETAKE)):
+        v = judge(flat_scene([box_vehicle(x0, x0 + 100, 200, 440)], *_sidewalk_only(200, 500)))
+        assert round(v.metrics["ground_support"], 2) == support
+        assert v.status == status, (x0, v.reasons)
+
+
+def _sidewalk_only(x0, x1):
+    sidewalk = np.zeros((H, W), bool)
+    sidewalk[240:, x0:x1] = True
+    return sidewalk, np.zeros((H, W), bool)
+
+
+def test_thin_gap_around_vehicle_is_tolerated():
+    # 킥보드 윤곽 둘레 8px 가 인식 안 된 틈으로 남아도(마스크 경계 오차·그림자) 바퀴 앞 바닥은 알아본 것으로 본다
+    veh = upright(540, 600)
+    scene = curb_scene(veh)
+    halo = cv2.dilate(veh.mask.astype(np.uint8), np.ones((17, 17), np.uint8)).astype(bool)
+    scene.sidewalk &= ~halo
+    v = judge(scene)
+    assert v.metrics["ground_support"] == 1.0
+    assert v.status == APPROVE, v.reasons
+
+
+def test_unknown_ground_does_not_soften_reject():
+    # 차도는 x<150 만 인식되고 x 150~200 은 인식 안 됨. 킥보드(x 100~220)는 대부분 차도 위 -> 보류 사유가 붙어도 거절
+    v = judge(curb_scene(upright(100, 220), road_until=150))
+    assert v.status == REJECT and {"ON_ROAD", "UNKNOWN_GROUND"} <= codes(v), v.reasons
+
+
+def test_curb_straddle_in_perspective():
+    """원근 장면: 킥보드(폭 50cm)가 연석(X=100)에 반쯤 걸쳐 있고 바닥 모델이 차도를 놓친 경우.
+
+    연석 선 위에 서서 킥보드를 정면으로 본 구도라 걸친 모습이 바퀴 앞 바닥에 그대로 드러난다.
+    (보도 쪽에서 비스듬히 보면 바퀴 앞 바닥이 전부 보도라서 이 규칙으로는 잡히지 않는다 -> docs/판정규칙.md)
+    """
+    _, scene, _ = make_scene([(75, 125, 420, 530, 110)], cam=(100.0, 0.0, 150.0))
+    v = judge(Scene(scene.vehicles, scene.sidewalk | scene.braille, np.zeros_like(scene.road)))
+    assert 0.4 < v.metrics["ground_support"] < 0.6
+    assert v.status == RETAKE and codes(v) == {"UNKNOWN_GROUND"}, v.reasons
+
+
+def test_unknown_ground_also_holds_cm_path():
+    """점자블록으로 cm 실측이 돼서 남은 통행폭이 충분하게 나와도, 바퀴 앞 바닥을 모르면 통과시키지 않는다."""
+    img, scene, _ = make_scene([(160, 220, 350, 460, 110)])  # tests/test_ground.py 의 '주의'(반납은 됨) 장면
+    th = Thresholds()
+    gs = estimate_ground_scale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32), scene, th)
+    assert judge(scene, th, ground=gs).status == APPROVE
+
+    # 킥보드 바로 앞 바닥 60px 을 '인식 안 됨'으로 비운다 (모델이 못 알아본 바닥: 화단 흙, 놓친 차도 등)
+    ys, xs = np.nonzero(scene.vehicles[0].mask)
+    patch = np.zeros_like(scene.sidewalk)
+    patch[ys.max() + 1 : ys.max() + 61, xs.min() : xs.max() + 1] = True
+    missed = Scene(scene.vehicles, scene.sidewalk & ~patch, scene.road & ~patch, scene.braille & ~patch)
+    v = judge(missed, th, ground=gs)
+    assert v.metrics["residual_cm"] > 150  # 통행폭만 보면 통과
+    assert v.metrics["ground_support"] < th.min_ground_support
+    assert v.status == RETAKE and "UNKNOWN_GROUND" in codes(v), v.reasons

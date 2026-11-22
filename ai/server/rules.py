@@ -10,6 +10,7 @@
   - (점자블록으로 cm 실측이 되면) 남은 통행폭 120cm 미만      -> REJECT
   - 차량·보도가 안 보이거나 화면이 너무 좁아 판단 불가        -> RETAKE (재촬영)
   - 보도를 가로질러 찍어 사진의 한 줄이 보도 폭이 아님         -> RETAKE (점유율이 낮게 나와도 통과시키지 않음)
+  - 바퀴 바로 앞 바닥을 모델이 알아보지 못함                  -> RETAKE (인식된 일부만 보고 통과시키지 않음)
   - 그 외                                                    -> APPROVE (경고/주의 등급이면 안내 문구)
 
 등급 (문제정의서 ⑤, 병목 통행폭 기준)
@@ -76,6 +77,8 @@ class Thresholds:
     # --- 보도를 가로질러 찍은 사진 (비율 규칙). 실제 사진으로 맞추기 전의 임시값
     cross_view_rows: float = 0.5  # 폭을 잰 줄 중 이 비율 넘게 보도가 화면 좌우 끝에 모두 닿고
     min_edge_rows_frac: float = 0.02  # 보도 양 끝이 화면 안에 들어온 줄이 사진 높이의 이 비율도 안 되면 -> 판단 보류
+    # --- 바퀴 주변 바닥 인식. 실제 사진으로 맞추기 전의 임시값
+    min_ground_support: float = 0.6  # 접지부 열 중 '바로 앞 바닥을 모델이 알아본 열'의 비율이 이보다 낮으면 -> 판단 보류
 
     # --- cm 실측 (server/ground.py)
     min_residual_cm: float = 120  # 교통약자법 시행규칙 최소 유효폭 -> 이보다 좁으면 반납 거절
@@ -126,6 +129,7 @@ MESSAGES = {
     "VEHICLE_CUT": (RETAKE, "킥보드 일부가 화면 밖으로 잘렸어요. 바퀴까지 전부 파란 틀 안에 들어오게 찍어주세요."),
     "NO_SIDEWALK": (RETAKE, "주변 바닥이 잘 보이지 않아요. 한 걸음 물러나 주변이 보이게 찍어주세요."),
     "TRUNCATED": (RETAKE, "보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요. 뒤로 물러나 보도 전체가 보이게 찍어주세요."),
+    "UNKNOWN_GROUND": (RETAKE, "바퀴 바로 앞 바닥이 보도인지 차도인지 알아보기 어려워요. 바퀴와 그 앞 바닥이 가려지지 않고 잘 보이게 다시 찍어주세요."),
     "CROSS_VIEW": (RETAKE, "보도가 화면 좌우 끝까지 이어져 있어 보도 폭을 알 수 없어요. 보도가 뻗은 방향을 바라보고 서서, 보도 양쪽 끝이 화면에 들어오게 다시 찍어주세요."),
     "FALLEN": (REJECT, "기기가 넘어져 있어요. 똑바로 세운 뒤 다시 찍어주세요."),
     "ON_ROAD": (REJECT, "차도나 자전거도로에 세워져 있어요. 보도 안쪽으로 옮겨주세요."),
@@ -205,6 +209,28 @@ def ground_ring(footprint: np.ndarray, vehicles_any: np.ndarray, ring_px: int) -
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ring_px + 1, 2 * ring_px + 1))
     dil = cv2.dilate(footprint.astype(np.uint8), k).astype(bool)
     return dil & ~vehicles_any
+
+
+def ground_support(footprint: np.ndarray, ring: np.ndarray, ground: np.ndarray, ring_px: int) -> float | None:
+    """바퀴(접지부) 바로 앞 바닥을 모델이 바닥(보도·차도·점자블록·횡단보도)으로 알아본 정도.
+
+    접지부의 열(세로줄) 가운데 '바로 앞 바닥이 인식된 열'의 비율을 돌려준다.
+    '바로 앞' = 사진에서 접지부 바로 아래에 붙은 링 부분 (카메라 쪽 바닥).
+    - 접지부의 옆과 뒤는 보지 않는다: 벽·화단·울타리처럼 바닥이 아닌 것이 오는 게 정상이라,
+      거기까지 세면 보도 가장자리에 잘 붙여 세운 킥보드가 걸린다.
+    - 픽셀 수가 아니라 열 단위로 센다: 킥보드 윤곽과 바닥 마스크 사이에는 마스크 경계 오차나 그림자로
+      얇은 틈이 생기기 쉬워서, 열마다 앞쪽 링의 1/4 이상이 인식되면 그 열은 알아본 것으로 친다.
+    앞 바닥이 보이는 열이 접지부의 절반도 안 되면(화면 아래 끝에 거의 닿음, 다른 기기에 가림) None.
+    """
+    cols = footprint.any(axis=0)
+    at_or_below = np.maximum.accumulate(footprint[::-1], axis=0)[::-1]  # 그 열에서 이 줄이나 더 아래에 접지부가 있음
+    front = ring & cols[None, :] & ~at_or_below
+    n = front.sum(axis=0)
+    seen = n >= max(1, ring_px // 4)
+    if seen.sum() < max(1, cols.sum() / 2):
+        return None
+    known = (front & ground).sum(axis=0) >= n / 4
+    return float((known & seen).sum() / seen.sum())
 
 
 def _runs(row: np.ndarray, gap: int) -> list[tuple[int, int]]:
@@ -366,7 +392,8 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
 
     veh_any = _union([v.mask for v in vehicles], (h, w))
     footprint = bottom_part(target.mask, th.footprint_frac)
-    ring = ground_ring(footprint, veh_any, max(3, int(max(h, w) * th.ring_frac)))
+    ring_px = max(3, int(max(h, w) * th.ring_frac))
+    ring = ground_ring(footprint, veh_any, ring_px)
     ground_mask = scene.road | scene.sidewalk
     for extra in (scene.braille, scene.crosswalk):
         if extra is not None:
@@ -393,6 +420,16 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
             reasons.append(_reason(f"ON_{code}"))
         elif value > limit - hold:
             reasons.append(_reason(f"BORDER_{code}"))
+
+    # 위 비율은 '링 중 인식된 바닥' 안에서의 비율이다. 바퀴 바로 앞 바닥을 모델이 못 알아봤으면
+    # (차도를 놓쳤거나, 화단·맨땅처럼 배우지 않은 바닥) 인식된 일부만 보고 낸 값이라 통과 근거가 못 된다
+    support = ground_support(footprint, ring, ground_mask, ring_px)
+    if support is not None:
+        metrics["ground_support"] = round(support, 3)
+
+    def flag_unknown_ground():
+        if support is not None and support < th.min_ground_support:
+            reasons.append(_reason("UNKNOWN_GROUND"))
 
     sidewalk_frac = float(scene.sidewalk.sum() / total)
     metrics["sidewalk_frac"] = round(sidewalk_frac, 3)
@@ -438,6 +475,7 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
                 reasons.append(_reason(code, cm=round(res_cm)))
         if len(vehicles) >= th.cluster_count:
             reasons.append(_reason("CLUSTER", n=len(vehicles)))
+        flag_unknown_ground()
         return _finish(verdict)
 
     # ---- 픽셀 비율 경로 (실측 불가: 점자블록 없음/가려짐/신뢰도 낮음)
@@ -491,6 +529,7 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
     if L and ext and ext >= 1.2 * (ys.max() - ys.min() + 1):
         metrics["residual_cm_est"] = round(worst["free_px"] * L / ext)
         metrics["scale_source"] = "vehicle_length(추정)"
+    flag_unknown_ground()
     return _finish(verdict)
 
 
