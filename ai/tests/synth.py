@@ -6,6 +6,7 @@
   300 <= X < 330 선형 점자블록 띠 (30cm 블록, 이음매 2cm)
   X >= 400       건물 벽
 카메라: (250, 0) 높이 150cm, 보도 방향(+Y)을 보며 35도 아래로.
+  yaw_deg 로 좌우로 돌릴 수 있다: 0 = 보도를 따라(+Y), 90 = 차도 쪽에서 건물 쪽으로 보도를 가로질러(+X).
 """
 import cv2
 import numpy as np
@@ -17,11 +18,11 @@ GX0, GW, GH = -300, 900, 2600  # 지면 래스터 1px = 1cm, X ∈ [-300, 600), 
 ROAD, SIDEWALK, BRAILLE, WALL = 1, 2, 3, 4
 
 
-def camera(cam=(250.0, 0.0, 150.0), pitch_deg=35.0):
+def camera(cam=(250.0, 0.0, 150.0), pitch_deg=35.0, yaw_deg=0.0):
     K = np.array([[F, 0, IMG_W / 2], [0, F, IMG_H / 2], [0, 0, 1.0]])
-    p = np.radians(pitch_deg)
-    right = np.array([1.0, 0, 0])
-    fwd = np.array([0, np.cos(p), -np.sin(p)])
+    p, a = np.radians(pitch_deg), np.radians(yaw_deg)
+    right = np.array([np.cos(a), -np.sin(a), 0])
+    fwd = np.array([np.sin(a) * np.cos(p), np.cos(a) * np.cos(p), -np.sin(p)])
     down = np.cross(fwd, right)
     R = np.array([right, down, fwd])
     t = -R @ np.array(cam)
@@ -55,9 +56,9 @@ def ground_raster(seed=0):
     return lab, np.clip(tex + noise, 0, 255).astype(np.uint8)
 
 
-def make_scene(boxes, seed=0):
-    """boxes: [(x0, x1, y0, y1, height_cm), ...] 지면 위 직육면체 기기."""
-    P, H_g2i = camera()
+def make_scene(boxes, seed=0, **cam_kw):
+    """boxes: [(x0, x1, y0, y1, height_cm), ...] 지면 위 직육면체 기기. cam_kw: camera() 인자 (기본은 보도를 따라 찍음)."""
+    P, H_g2i = camera(**cam_kw)
     T = np.array([[1, 0, GX0], [0, 1, 0], [0, 0, 1.0]])  # 래스터 -> 지면
     H_r2i = H_g2i @ T
     lab_g, tex_g = ground_raster(seed)

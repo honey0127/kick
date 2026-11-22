@@ -8,6 +8,7 @@
   - 보도 가로 폭의 60% 이상 점유                             -> REJECT
   - (점자블록으로 cm 실측이 되면) 남은 통행폭 120cm 미만      -> REJECT
   - 차량·보도가 안 보이거나 화면이 너무 좁아 판단 불가        -> RETAKE (재촬영)
+  - 보도를 가로질러 찍어 사진의 한 줄이 보도 폭이 아님         -> RETAKE (점유율이 낮게 나와도 통과시키지 않음)
   - 그 외                                                    -> APPROVE (경고/주의 등급이면 안내 문구)
 
 등급 (문제정의서 ⑤, 병목 통행폭 기준)
@@ -71,6 +72,9 @@ class Thresholds:
     gap_frac: float = 0.02  # 보도 마스크의 작은 끊김(가로수·사람 등)은 이어붙임
     edge_margin_px: int = 3
     row_percentile: float = 90
+    # --- 보도를 가로질러 찍은 사진 (비율 규칙). 실제 사진으로 맞추기 전의 임시값
+    cross_view_rows: float = 0.5  # 폭을 잰 줄 중 이 비율 넘게 보도가 화면 좌우 끝에 모두 닿고
+    min_edge_rows_frac: float = 0.02  # 보도 양 끝이 화면 안에 들어온 줄이 사진 높이의 이 비율도 안 되면 -> 판단 보류
 
     # --- cm 실측 (server/ground.py)
     min_residual_cm: float = 120  # 교통약자법 시행규칙 최소 유효폭 -> 이보다 좁으면 반납 거절
@@ -121,6 +125,7 @@ MESSAGES = {
     "VEHICLE_CUT": (RETAKE, "킥보드 일부가 화면 밖으로 잘렸어요. 바퀴까지 전부 파란 틀 안에 들어오게 찍어주세요."),
     "NO_SIDEWALK": (RETAKE, "주변 바닥이 잘 보이지 않아요. 한 걸음 물러나 주변이 보이게 찍어주세요."),
     "TRUNCATED": (RETAKE, "보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요. 뒤로 물러나 보도 전체가 보이게 찍어주세요."),
+    "CROSS_VIEW": (RETAKE, "보도가 화면 좌우 끝까지 이어져 있어 보도 폭을 알 수 없어요. 보도가 뻗은 방향을 바라보고 서서, 보도 양쪽 끝이 화면에 들어오게 다시 찍어주세요."),
     "FALLEN": (REJECT, "기기가 넘어져 있어요. 똑바로 세운 뒤 다시 찍어주세요."),
     "ON_ROAD": (REJECT, "차도나 자전거도로에 세워져 있어요. 보도 안쪽으로 옮겨주세요."),
     "ON_CROSSWALK": (REJECT, "횡단보도(진입부)를 막고 있어요. 다른 곳으로 옮겨주세요."),
@@ -253,6 +258,35 @@ def width_occupancy(scene: Scene, rows: np.ndarray, th: Thresholds) -> list[dict
             }
         )
     return out
+
+
+def frame_span(scene: Scene, target: Vehicle, th: Thresholds) -> tuple[np.ndarray, int]:
+    """반납 대상이 서 있는 보도 덩어리가 줄(행)마다 화면 좌우 끝에 닿는지 본다.
+
+    반환: (줄마다 '화면 왼쪽 끝과 오른쪽 끝에 모두 닿음' 여부, 보도 양 끝이 모두 화면 안에 들어온 줄 수)
+
+    width_occupancy 는 '사진의 한 줄 = 보도를 가로지르는 단면'이라고 가정한다. 보도를 가로질러(옆에서) 찍으면
+    한 줄이 보도의 '길이' 방향이 되어, 보도 폭을 다 막은 킥보드도 점유율이 작게 나온다.
+    두 경우는 보도 덩어리의 모양으로 구분한다.
+      - 보도를 따라 찍음: 가까운 곳은 화면보다 넓어도, 먼 곳은 원근 때문에 좁아져 양 끝이 화면 안에 들어온다.
+      - 가로질러 찍음: 보도가 화면을 좌우로 가로지르는 띠라서 어느 줄에서도 양 끝이 보이지 않는다.
+    """
+    h, w = scene.shape
+    floor = scene.sidewalk if scene.braille is None else scene.sidewalk | scene.braille
+    walk = floor | _union([v.mask for v in scene.vehicles], (h, w))
+    # width_occupancy 가 줄 안의 작은 끊김을 이어붙이듯, 가로수·기둥에 끊긴 보도도 한 덩어리로 본다
+    k = max(1, int(w * th.gap_frac))
+    closed = cv2.morphologyEx(walk.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
+    _, labels = cv2.connectedComponents(closed, connectivity=8)
+    ids = labels[bottom_part(target.mask, th.footprint_frac)]
+    if ids.size == 0:
+        return np.zeros(h, bool), 0
+    comp = (labels == np.bincount(ids).argmax()) & walk  # 이어붙이느라 늘어난 픽셀은 빼고 원래 마스크만
+    m = th.edge_margin_px
+    left = comp[:, : m + 1].any(axis=1)
+    right = comp[:, w - 1 - m :].any(axis=1)
+    enough = (comp & floor).sum(axis=1) >= w * th.min_span_frac  # 기기만 걸친 줄은 '보도 끝이 보인 줄'로 세지 않음
+    return left & right, int((enough & ~left & ~right).sum())
 
 
 def grade_of(residual_cm: float, braille_hit: bool, crosswalk_hit: bool, n_vehicles: int, th: Thresholds) -> str:
@@ -403,12 +437,26 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
     worst = rows_info[int(np.argmax(ratios))]
     over = [r for r in rows_info if r["ratio"] >= th.max_width_occupancy - th.width_hold]
     truncated = bool(over) and sum(r["truncated"] for r in over) > len(over) / 2
-    metrics.update(width_occupancy=round(occ, 3), truncated=truncated)
+    # 보도를 가로질러 찍었는지: 폭을 잰 줄 대부분에서 보도가 화면 좌우 끝에 모두 닿는데, 보도 양 끝이
+    # 화면 안에 들어온 줄(따라 찍었다면 먼 쪽에 생긴다)이 거의 없으면 사진의 한 줄이 보도 폭이 아니다
+    spans, edge_rows = frame_span(scene, target, th)
+    span_share = float(np.mean([spans[r["y"]] for r in rows_info]))
+    cross_view = span_share > th.cross_view_rows and edge_rows < max(1, h * th.min_edge_rows_frac)
+    metrics.update(width_occupancy=round(occ, 3), truncated=truncated, frame_span=round(span_share, 3), sidewalk_edge_rows=edge_rows)
     verdict.worst_row, verdict.worst_span = worst["y"], (worst["x0"], worst["x1"])
+    width_reason = None
     if occ >= th.max_width_occupancy + th.width_hold:
-        reasons.append(_reason("TRUNCATED") if truncated else _reason("WIDTH", pct=round(occ * 100)))
+        width_reason = _reason("TRUNCATED") if truncated else _reason("WIDTH", pct=round(occ * 100))
     elif occ >= th.max_width_occupancy - th.width_hold:
-        reasons.append(_reason("TRUNCATED") if truncated else _reason("BORDER_WIDTH", pct=round(occ * 100)))
+        width_reason = _reason("TRUNCATED") if truncated else _reason("BORDER_WIDTH", pct=round(occ * 100))
+    if cross_view:
+        # 가로질러 찍은 사진의 점유율은 통과 근거로도 거절 근거로도 쓰지 않는다:
+        # 낮게 나왔어도 통과시키지 않고, 방향을 바꿔 다시 찍게 한다 (보도 끝이 안 보인다는 TRUNCATED 는 그대로 둠)
+        if width_reason is not None and width_reason["code"] == "TRUNCATED":
+            reasons.append(width_reason)
+        reasons.append(_reason("CROSS_VIEW"))
+    elif width_reason is not None:
+        reasons.append(width_reason)
 
     # 최후 대체 기준: 기기를 옆에서 찍었으면 차체 길이로 대략 cm 환산 (표시만, 판정에는 안 씀)
     L = th.vehicle_length_cm.get(target.kind)
