@@ -78,7 +78,11 @@ class LocationFlowTest {
             AnalysisResult(ParkingStatus.SAFE, findings = emptyList(), isMock = false)
     }
 
-    private fun start(api: ReturnApi, analyzer: PhotoAnalyzer = MockPhotoAnalyzer()) {
+    /**
+     * @param gallery 반납 순서에서도 갤러리 사진을 받게 할지. 앱에서는 받지 않지만, 테스트에서는 카메라로
+     *   촬영할 수 없어 사진 확인 화면까지 가는 수단으로 켠다.
+     */
+    private fun start(api: ReturnApi, analyzer: PhotoAnalyzer = MockPhotoAnalyzer(), gallery: Boolean = true) {
         shadowOf(composeRule.activity.application).grantPermissions(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.CAMERA,
@@ -91,7 +95,7 @@ class LocationFlowTest {
         )
         composeRule.setContent {
             SafeZoneTheme {
-                AppNavigation(analyzer = analyzer, returnApi = api, locationSource = here)
+                AppNavigation(analyzer = analyzer, returnApi = api, locationSource = here, galleryInReturnFlow = gallery)
             }
         }
     }
@@ -113,6 +117,15 @@ class LocationFlowTest {
         val pickedPhoto = Uri.parse("content://media/picker/0/com.android.providers.media.photopicker/media/1")
         shadowOf(activity).receiveResult(picker.intent, Activity.RESULT_OK, Intent().setData(pickedPhoto))
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun returnFlow_offersCameraOnly() {
+        // 앱의 기본 설정: 반납 순서에서는 다른 곳·다른 때 찍은 사진을 고를 수 없게 갤러리 버튼을 숨긴다.
+        start(FakeReturnApi(allowed), gallery = false)
+
+        composeRule.onNodeWithText("사진 촬영하기").assertIsDisplayed()
+        composeRule.onNodeWithText("갤러리에서 선택하기").assertDoesNotExist()
     }
 
     @Test

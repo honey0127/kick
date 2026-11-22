@@ -23,10 +23,11 @@ class MainActivityTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun homeScreen_showsLogoTitleAndBothButtons() {
+    fun homeScreen_showsLogoTitleAndCameraButton() {
         composeRule.onNodeWithText("Safe Zone").assertIsDisplayed()
         composeRule.onNodeWithText("안전한 주차,\n올바른 보행의 시작").assertIsDisplayed()
         composeRule.onNodeWithText("사진 촬영하기").assertIsDisplayed()
-        composeRule.onNodeWithText("갤러리에서 선택하기").assertIsDisplayed()
+        // 갤러리 버튼은 서버 주소를 설정하면 숨겨지므로(PC 마다 다름) 여기서 확인하지 않는다.
+        // 있을 때는 AppFlowTest, 없을 때는 LocationFlowTest 에서 확인한다.
     }
 }

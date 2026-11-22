@@ -104,6 +104,9 @@ private fun createServices(context: Context): AppServices {
  *   테스트에서는 여기에 임시 분석기를 직접 넣어, PC 의 서버 주소 설정(local.properties)과 무관하게 같은 결과가 나오게 한다.
  * @param returnApi 위치 확인·반납 완료 API. 테스트에서 위치 확인 단계를 확인할 때 locationSource 와 함께 넣는다.
  *   analyzer 만 넣으면 위치 확인 없이 진행한다.
+ * @param galleryInReturnFlow 반납 순서(서버 연결)에서도 갤러리 사진을 받을지. 앱에서는 받지 않는다(false):
+ *   위치를 확인한 그 자리에서 찍은 사진이어야 하는데, 갤러리에서는 다른 곳·다른 때 찍은 사진을 고를 수 있기 때문이다.
+ *   테스트에서는 카메라로 실제 촬영을 할 수 없어, 사진을 넣어 주는 수단으로 true 를 쓴다.
  */
 @Composable
 fun AppNavigation(
@@ -111,6 +114,7 @@ fun AppNavigation(
     analyzer: PhotoAnalyzer? = null,
     returnApi: ReturnApi? = null,
     locationSource: DeviceLocationSource? = null,
+    galleryInReturnFlow: Boolean = false,
 ) {
     val navController = rememberNavController()
 
@@ -124,6 +128,8 @@ fun AppNavigation(
     val source = services.locationSource
     val returnViewModel: ReturnViewModel? =
         if (api != null && source != null) viewModel { ReturnViewModel(api, source) } else null
+    // 임시 분석기(반납 순서 없음)에서는 화면 확인용으로 갤러리를 그대로 둔다.
+    val galleryAllowed = returnViewModel == null || galleryInReturnFlow
 
     // 마지막으로 고른 사진 방법. 반납 토큰이 만료돼 위치 확인부터 다시 할 때 같은 방법으로 이어 간다.
     var lastTarget by rememberSaveable { mutableStateOf(PhotoSource.CAMERA) }
@@ -178,7 +184,7 @@ fun AppNavigation(
         composable(Routes.HOME) {
             HomeScreen(
                 onTakePhotoClick = { startReturn(PhotoSource.CAMERA) },
-                onPickPhotoClick = { startReturn(PhotoSource.GALLERY) },
+                onPickPhotoClick = if (galleryAllowed) ({ startReturn(PhotoSource.GALLERY) }) else null,
             )
         }
 

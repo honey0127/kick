@@ -38,11 +38,14 @@ import com.example.safezone.ui.theme.SafeZoneTheme
 /**
  * 앱의 첫 화면.
  * 화면을 그리기만 하고, 버튼을 눌렀을 때 할 일은 호출하는 쪽(AppNavigation)에서 받는다.
+ *
+ * @param onPickPhotoClick 갤러리 버튼을 눌렀을 때 할 일. null 이면 갤러리 버튼을 보여 주지 않는다
+ *   (반납 순서에서는 지금 그 자리에서 찍은 사진만 받는다).
  */
 @Composable
 fun HomeScreen(
     onTakePhotoClick: () -> Unit,
-    onPickPhotoClick: () -> Unit,
+    onPickPhotoClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -104,12 +107,14 @@ fun HomeScreen(
             onClick = onTakePhotoClick,
             icon = Icons.Outlined.PhotoCamera,
         )
-        Spacer(modifier = Modifier.height(12.dp))
-        SecondaryButton(
-            text = "갤러리에서 선택하기",
-            onClick = onPickPhotoClick,
-            icon = Icons.Outlined.Image,
-        )
+        if (onPickPhotoClick != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            SecondaryButton(
+                text = "갤러리에서 선택하기",
+                onClick = onPickPhotoClick,
+                icon = Icons.Outlined.Image,
+            )
+        }
     }
 }
 
