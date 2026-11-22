@@ -27,6 +27,7 @@ import com.example.safezone.BuildConfig
 import com.example.safezone.data.analysis.MockPhotoAnalyzer
 import com.example.safezone.data.analysis.PhotoAnalyzer
 import com.example.safezone.data.analysis.RemotePhotoAnalyzer
+import com.example.safezone.data.analysis.shrinkForUpload
 import com.example.safezone.data.location.AndroidLocationSource
 import com.example.safezone.data.location.DeviceLocationSource
 import com.example.safezone.data.location.RemoteReturnApi
@@ -89,8 +90,10 @@ private fun createServices(context: Context): AppServices {
         analyzer = RemotePhotoAnalyzer(
             serverUrl = serverUrl,
             readPhoto = { uri ->
-                context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+                val bytes = context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
                     ?: throw IOException("사진을 열 수 없어요: $uri")
+                // 카메라 원본(수 MB)을 그대로 보내면 느린 통신망에서 오래 걸리므로 줄여서 보낸다
+                shrinkForUpload(bytes)
             },
             session = session,
         ),

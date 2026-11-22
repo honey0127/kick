@@ -97,6 +97,9 @@ AI 서버 연결:  홈 ─ 사진 촬영하기 ─→ 위치 확인 (①) ─→
 | 없음 (기본) | 위치 확인 없음. `MockPhotoAnalyzer` 가 약 2초 뒤 SAFE → UNSAFE → UNCERTAIN 순서로 정해진 결과 |
 
 서버가 단계를 검사하므로 위치 확인 없이 사진만 보내면 거절되고, 한 번의 위치 확인으로 사진 판정은 10번까지 할 수 있습니다.
+
+사진은 보내기 전에 긴 변 1600px 로 줄입니다 (`shrinkForUpload`). 카메라 원본은 수 MB 라서 느린 통신망에서 오래 걸리기 때문입니다.
+사진에 적힌 방향(EXIF)은 픽셀에 반영해 똑바로 세우고, 줄이지 못하면 원본을 그대로 보냅니다.
 위치 확인 후 10분이 지나면 토큰이 만료되어 처음부터 다시 해야 합니다. 서버는 토큰을 메모리에만 두므로 서버를 다시 시작해도 같습니다.
 앱은 서버가 토큰을 받지 않으면(HTTP 410/429/409) "위치 다시 확인하기"로 안내합니다.
 
@@ -143,6 +146,7 @@ app/src/main/java/com/example/safezone/
 │   ├── analysis/
 │   │   ├── PhotoAnalyzer.kt         분석기 인터페이스
 │   │   ├── RemotePhotoAnalyzer.kt   AI 서버에 사진을 보내는 분석기, 응답 변환
+│   │   ├── UploadPhoto.kt           보내기 전 사진 줄이기
 │   │   └── MockPhotoAnalyzer.kt     UI 확인용 임시 분석기
 │   └── location/
 │       ├── ReturnApi.kt             위치 확인·반납 완료 API, 반납 토큰(ReturnSession)
@@ -211,6 +215,7 @@ sdk.dir=C\:\\Users\\<사용자>\\AppData\\Local\\Android\\Sdk
 | `ReturnViewModelTest` | 위치 확인 통과·거절·실패, 반납 완료 성공·토큰 만료·연결 실패 후 재시도, 초기화 |
 | `MockPhotoAnalyzerTest` | 결과 순서, 모든 결과에 임시 결과 표시 |
 | `RemotePhotoAnalyzerTest` | 서버 응답 → 앱 결과 변환(근거 이미지 포함), 가짜 HTTP 서버로 사진 업로드, 서버 오류 시 실패 처리와 원인 기록, 토큰 없이는 요청하지 않음, 410/429/409 는 토큰 만료로 구분 |
+| `UploadPhotoTest` | 보내기 전 사진 줄이기: 큰 사진은 긴 변 1600px 로, 작은 사진·사진이 아닌 데이터는 그대로, EXIF 방향대로 똑바로 세움 |
 | `RemoteReturnApiTest` | 가짜 HTTP 서버로 위치 확인·반납 완료 요청과 응답 변환, 토큰 저장·삭제 |
 | `PickBestLocationTest` | 여러 위치 제공자 가운데 어떤 위치를 언제 고르는지 (정확한 위치 즉시 사용, 덜 정확하면 잠깐 대기, 실내에서 GPS 무응답, 전부 무응답) |
 | `ResultScreenTest` | 상태별 문구와 버튼, 결과에 든 근거만 표시, 근거 이미지 카드, 임시 결과 안내, 반납 완료 버튼의 처리 중·실패 표시 |
