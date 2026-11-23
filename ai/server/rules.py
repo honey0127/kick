@@ -6,8 +6,11 @@
 판정 기준
   - 차도 위에 세워짐 / 횡단보도·점자블록 점유 / 전도        -> REJECT
   - 보도 가로 폭의 60% 이상 점유                             -> REJECT
+    (비율 규칙은 '유효 점유율' = 1 - 이어져서 남은 가장 넓은 통로 비율. 가장자리에서 떨어져 세우면 차지한 폭보다 커진다)
   - (점자블록으로 cm 실측이 되면) 남은 통행폭 120cm 미만      -> REJECT
   - 차량·보도가 안 보이거나 화면이 너무 좁아 판단 불가        -> RETAKE (재촬영)
+  - 보도를 가로질러 찍어 사진의 한 줄이 보도 폭이 아님         -> RETAKE (점유율이 낮게 나와도 통과시키지 않음)
+  - 바퀴 바로 앞 바닥을 모델이 알아보지 못함                  -> RETAKE (인식된 일부만 보고 통과시키지 않음)
   - 그 외                                                    -> APPROVE (경고/주의 등급이면 안내 문구)
 
 등급 (문제정의서 ⑤, 병목 통행폭 기준)
@@ -71,6 +74,11 @@ class Thresholds:
     gap_frac: float = 0.02  # 보도 마스크의 작은 끊김(가로수·사람 등)은 이어붙임
     edge_margin_px: int = 3
     row_percentile: float = 90
+    # --- 보도를 가로질러 찍은 사진 (비율 규칙). 실제 사진으로 맞추기 전의 임시값
+    cross_view_rows: float = 0.5  # 폭을 잰 줄 중 이 비율 넘게 보도가 화면 좌우 끝에 모두 닿고
+    min_edge_rows_frac: float = 0.02  # 보도 양 끝이 화면 안에 들어온 줄이 사진 높이의 이 비율도 안 되면 -> 판단 보류
+    # --- 바퀴 주변 바닥 인식. 실제 사진으로 맞추기 전의 임시값
+    min_ground_support: float = 0.6  # 접지부 열 중 '바로 앞 바닥을 모델이 알아본 열'의 비율이 이보다 낮으면 -> 판단 보류
 
     # --- cm 실측 (server/ground.py)
     min_residual_cm: float = 120  # 교통약자법 시행규칙 최소 유효폭 -> 이보다 좁으면 반납 거절
@@ -121,16 +129,20 @@ MESSAGES = {
     "VEHICLE_CUT": (RETAKE, "킥보드 일부가 화면 밖으로 잘렸어요. 바퀴까지 전부 파란 틀 안에 들어오게 찍어주세요."),
     "NO_SIDEWALK": (RETAKE, "주변 바닥이 잘 보이지 않아요. 한 걸음 물러나 주변이 보이게 찍어주세요."),
     "TRUNCATED": (RETAKE, "보도 양 끝이 화면 밖이라 폭을 판단할 수 없어요. 뒤로 물러나 보도 전체가 보이게 찍어주세요."),
+    "UNKNOWN_GROUND": (RETAKE, "바퀴 바로 앞 바닥이 보도인지 차도인지 알아보기 어려워요. 바퀴와 그 앞 바닥이 가려지지 않고 잘 보이게 다시 찍어주세요."),
+    "CROSS_VIEW": (RETAKE, "보도가 화면 좌우 끝까지 이어져 있어 보도 폭을 알 수 없어요. 보도가 뻗은 방향을 바라보고 서서, 보도 양쪽 끝이 화면에 들어오게 다시 찍어주세요."),
     "FALLEN": (REJECT, "기기가 넘어져 있어요. 똑바로 세운 뒤 다시 찍어주세요."),
     "ON_ROAD": (REJECT, "차도나 자전거도로에 세워져 있어요. 보도 안쪽으로 옮겨주세요."),
     "ON_CROSSWALK": (REJECT, "횡단보도(진입부)를 막고 있어요. 다른 곳으로 옮겨주세요."),
     "ON_BRAILLE": (REJECT, "점자블록 위에 세워져 있어요. 점자블록을 비워주세요."),
     "WIDTH": (REJECT, "보도 폭을 너무 많이 차지해요({pct}%). 보도 가장자리에 붙여 세워주세요."),
+    "OFF_EDGE": (REJECT, "보도 가장자리에서 떨어져 세워져 있어, 옆으로 지나갈 수 있는 폭이 보도 폭의 {free}%뿐이에요. 보도 가장자리에 바짝 붙여 세워주세요."),
     "NARROW": (REJECT, "남은 통행폭이 {cm}cm라 휠체어가 지나갈 수 없어요(최소 120cm). 보도 가장자리로 바짝 붙여주세요."),
     "BORDER_ROAD": (RETAKE, "차도와 보도 경계에 걸쳐 있어 판단하기 어려워요. 보도 안쪽으로 조금 옮긴 뒤 다시 찍어주세요."),
     "BORDER_CROSSWALK": (RETAKE, "횡단보도 진입부에 닿았는지 애매해요. 횡단보도에서 조금 떨어뜨려 세운 뒤 다시 찍어주세요."),
     "BORDER_BRAILLE": (RETAKE, "점자블록에 닿았는지 애매해요. 점자블록에서 조금 떨어뜨려 세운 뒤 다시 찍어주세요."),
     "BORDER_WIDTH": (RETAKE, "보도 폭을 기준(60%) 근처로 차지해서({pct}%) 판단하기 어려워요. 보도 가장자리로 조금 더 붙여 세운 뒤 다시 찍어주세요."),
+    "BORDER_OFF_EDGE": (RETAKE, "보도 가장자리에서 떨어져 세워져 있어, 옆으로 지나갈 수 있는 폭(보도 폭의 {free}%)이 기준(40%) 근처라 판단하기 어려워요. 보도 가장자리로 더 붙여 세운 뒤 다시 찍어주세요."),
     "BORDER_NARROW": (RETAKE, "남은 통행폭이 {cm}cm로 기준(120cm) 근처라 판단하기 어려워요. 보도 가장자리로 조금 더 붙여 세운 뒤 다시 찍어주세요."),
     "WARN_WIDTH": (INFO, "남은 통행폭 {cm}cm — 반납은 되지만 휠체어·유모차가 지나가기 빠듯해요. 가장자리로 더 붙여주시면 좋아요."),
     "CAUTION_WIDTH": (INFO, "남은 통행폭 {cm}cm — 보도 기준폭(2m)보다 좁아요."),
@@ -199,6 +211,28 @@ def ground_ring(footprint: np.ndarray, vehicles_any: np.ndarray, ring_px: int) -
     return dil & ~vehicles_any
 
 
+def ground_support(footprint: np.ndarray, ring: np.ndarray, ground: np.ndarray, ring_px: int) -> float | None:
+    """바퀴(접지부) 바로 앞 바닥을 모델이 바닥(보도·차도·점자블록·횡단보도)으로 알아본 정도.
+
+    접지부의 열(세로줄) 가운데 '바로 앞 바닥이 인식된 열'의 비율을 돌려준다.
+    '바로 앞' = 사진에서 접지부 바로 아래에 붙은 링 부분 (카메라 쪽 바닥).
+    - 접지부의 옆과 뒤는 보지 않는다: 벽·화단·울타리처럼 바닥이 아닌 것이 오는 게 정상이라,
+      거기까지 세면 보도 가장자리에 잘 붙여 세운 킥보드가 걸린다.
+    - 픽셀 수가 아니라 열 단위로 센다: 킥보드 윤곽과 바닥 마스크 사이에는 마스크 경계 오차나 그림자로
+      얇은 틈이 생기기 쉬워서, 열마다 앞쪽 링의 1/4 이상이 인식되면 그 열은 알아본 것으로 친다.
+    앞 바닥이 보이는 열이 접지부의 절반도 안 되면(화면 아래 끝에 거의 닿음, 다른 기기에 가림) None.
+    """
+    cols = footprint.any(axis=0)
+    at_or_below = np.maximum.accumulate(footprint[::-1], axis=0)[::-1]  # 그 열에서 이 줄이나 더 아래에 접지부가 있음
+    front = ring & cols[None, :] & ~at_or_below
+    n = front.sum(axis=0)
+    seen = n >= max(1, ring_px // 4)
+    if seen.sum() < max(1, cols.sum() / 2):
+        return None
+    known = (front & ground).sum(axis=0) >= n / 4
+    return float((known & seen).sum() / seen.sum())
+
+
 def _runs(row: np.ndarray, gap: int) -> list[tuple[int, int]]:
     """True 구간 목록 [(x0, x1)], gap 이하의 끊김은 이어붙인다."""
     xs = np.flatnonzero(row)
@@ -242,6 +276,7 @@ def width_occupancy(scene: Scene, rows: np.ndarray, th: Thresholds) -> list[dict
         if sidewalk_px == 0:
             continue  # 기기만 있고 보도가 없는 행은 비율 의미 없음
         free = _runs(~occ[x0 : x1 + 1], 0)
+        cut = bool(x0 <= th.edge_margin_px or x1 >= w - 1 - th.edge_margin_px)  # 보도가 화면 밖으로 이어짐
         out.append(
             {
                 "y": int(y),
@@ -249,10 +284,52 @@ def width_occupancy(scene: Scene, rows: np.ndarray, th: Thresholds) -> list[dict
                 "x1": int(x1),
                 "ratio": float(occ[x0 : x1 + 1].sum() / span),
                 "free_px": max((b - a + 1 for a, b in free), default=0),
-                "truncated": bool(x0 <= th.edge_margin_px or x1 >= w - 1 - th.edge_margin_px),
+                "eff": float(1 - _passable_px(free, span, cut) / span),
+                "truncated": cut,
             }
         )
     return out
+
+
+def _passable_px(free: list[tuple[int, int]], span: int, cut: bool) -> int:
+    """한 줄에서 '지나갈 수 있는 폭'(px). 유효 점유율 = 1 - 이 값 / 보도 폭.
+
+    킥보드 옆으로 이어져서 남은 통로 하나로만 지나갈 수 있으므로, 가장 넓은 통로만 세고 나머지 틈은 막힌 것으로 친다
+    (보도 한가운데 세워 통로를 둘로 나누면 차지한 폭보다 훨씬 많이 막는다).
+    단, 보도가 화면 밖으로 이어진 줄(cut)은 통로와 보도의 실제 폭을 알 수 없어서 좁다고 단정하지 않는다:
+    예전처럼 빈 곳을 모두 지나갈 수 있는 폭으로 센다 (유효 점유율 = 차지한 폭).
+    """
+    lens = [b - a + 1 for a, b in free]
+    return sum(lens) if cut else max(lens, default=0)
+
+
+def frame_span(scene: Scene, target: Vehicle, th: Thresholds) -> tuple[np.ndarray, int]:
+    """반납 대상이 서 있는 보도 덩어리가 줄(행)마다 화면 좌우 끝에 닿는지 본다.
+
+    반환: (줄마다 '화면 왼쪽 끝과 오른쪽 끝에 모두 닿음' 여부, 보도 양 끝이 모두 화면 안에 들어온 줄 수)
+
+    width_occupancy 는 '사진의 한 줄 = 보도를 가로지르는 단면'이라고 가정한다. 보도를 가로질러(옆에서) 찍으면
+    한 줄이 보도의 '길이' 방향이 되어, 보도 폭을 다 막은 킥보드도 점유율이 작게 나온다.
+    두 경우는 보도 덩어리의 모양으로 구분한다.
+      - 보도를 따라 찍음: 가까운 곳은 화면보다 넓어도, 먼 곳은 원근 때문에 좁아져 양 끝이 화면 안에 들어온다.
+      - 가로질러 찍음: 보도가 화면을 좌우로 가로지르는 띠라서 어느 줄에서도 양 끝이 보이지 않는다.
+    """
+    h, w = scene.shape
+    floor = scene.sidewalk if scene.braille is None else scene.sidewalk | scene.braille
+    walk = floor | _union([v.mask for v in scene.vehicles], (h, w))
+    # width_occupancy 가 줄 안의 작은 끊김을 이어붙이듯, 가로수·기둥에 끊긴 보도도 한 덩어리로 본다
+    k = max(1, int(w * th.gap_frac))
+    closed = cv2.morphologyEx(walk.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
+    _, labels = cv2.connectedComponents(closed, connectivity=8)
+    ids = labels[bottom_part(target.mask, th.footprint_frac)]
+    if ids.size == 0:
+        return np.zeros(h, bool), 0
+    comp = (labels == np.bincount(ids).argmax()) & walk  # 이어붙이느라 늘어난 픽셀은 빼고 원래 마스크만
+    m = th.edge_margin_px
+    left = comp[:, : m + 1].any(axis=1)
+    right = comp[:, w - 1 - m :].any(axis=1)
+    enough = (comp & floor).sum(axis=1) >= w * th.min_span_frac  # 기기만 걸친 줄은 '보도 끝이 보인 줄'로 세지 않음
+    return left & right, int((enough & ~left & ~right).sum())
 
 
 def grade_of(residual_cm: float, braille_hit: bool, crosswalk_hit: bool, n_vehicles: int, th: Thresholds) -> str:
@@ -315,7 +392,8 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
 
     veh_any = _union([v.mask for v in vehicles], (h, w))
     footprint = bottom_part(target.mask, th.footprint_frac)
-    ring = ground_ring(footprint, veh_any, max(3, int(max(h, w) * th.ring_frac)))
+    ring_px = max(3, int(max(h, w) * th.ring_frac))
+    ring = ground_ring(footprint, veh_any, ring_px)
     ground_mask = scene.road | scene.sidewalk
     for extra in (scene.braille, scene.crosswalk):
         if extra is not None:
@@ -342,6 +420,16 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
             reasons.append(_reason(f"ON_{code}"))
         elif value > limit - hold:
             reasons.append(_reason(f"BORDER_{code}"))
+
+    # 위 비율은 '링 중 인식된 바닥' 안에서의 비율이다. 바퀴 바로 앞 바닥을 모델이 못 알아봤으면
+    # (차도를 놓쳤거나, 화단·맨땅처럼 배우지 않은 바닥) 인식된 일부만 보고 낸 값이라 통과 근거가 못 된다
+    support = ground_support(footprint, ring, ground_mask, ring_px)
+    if support is not None:
+        metrics["ground_support"] = round(support, 3)
+
+    def flag_unknown_ground():
+        if support is not None and support < th.min_ground_support:
+            reasons.append(_reason("UNKNOWN_GROUND"))
 
     sidewalk_frac = float(scene.sidewalk.sum() / total)
     metrics["sidewalk_frac"] = round(sidewalk_frac, 3)
@@ -387,6 +475,7 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
                 reasons.append(_reason(code, cm=round(res_cm)))
         if len(vehicles) >= th.cluster_count:
             reasons.append(_reason("CLUSTER", n=len(vehicles)))
+        flag_unknown_ground()
         return _finish(verdict)
 
     # ---- 픽셀 비율 경로 (실측 불가: 점자블록 없음/가려짐/신뢰도 낮음)
@@ -400,15 +489,38 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
         return _finish(verdict)
     ratios = np.array([r["ratio"] for r in rows_info])
     occ = float(np.percentile(ratios, th.row_percentile))
+    # 판정은 유효 점유율로 한다. 가장자리에 붙여 세우면 occ 와 같고, 가장자리에서 떨어져 통로가 양쪽으로
+    # 나뉘면 occ 보다 커진다 (보도 한가운데 세운 킥보드는 차지한 폭이 작아도 양옆 어느 쪽으로도 지나가기 어렵다)
+    eff = float(np.percentile([r["eff"] for r in rows_info], th.row_percentile))
     worst = rows_info[int(np.argmax(ratios))]
-    over = [r for r in rows_info if r["ratio"] >= th.max_width_occupancy - th.width_hold]
+    lo, hi = th.max_width_occupancy - th.width_hold, th.max_width_occupancy + th.width_hold
+    over = [r for r in rows_info if r["eff"] >= lo]
     truncated = bool(over) and sum(r["truncated"] for r in over) > len(over) / 2
-    metrics.update(width_occupancy=round(occ, 3), truncated=truncated)
+    # 보도를 가로질러 찍었는지: 폭을 잰 줄 대부분에서 보도가 화면 좌우 끝에 모두 닿는데, 보도 양 끝이
+    # 화면 안에 들어온 줄(따라 찍었다면 먼 쪽에 생긴다)이 거의 없으면 사진의 한 줄이 보도 폭이 아니다
+    spans, edge_rows = frame_span(scene, target, th)
+    span_share = float(np.mean([spans[r["y"]] for r in rows_info]))
+    cross_view = span_share > th.cross_view_rows and edge_rows < max(1, h * th.min_edge_rows_frac)
+    metrics.update(
+        width_occupancy=round(occ, 3), effective_occupancy=round(eff, 3), truncated=truncated,
+        frame_span=round(span_share, 3), sidewalk_edge_rows=edge_rows,
+    )
     verdict.worst_row, verdict.worst_span = worst["y"], (worst["x0"], worst["x1"])
-    if occ >= th.max_width_occupancy + th.width_hold:
-        reasons.append(_reason("TRUNCATED") if truncated else _reason("WIDTH", pct=round(occ * 100)))
-    elif occ >= th.max_width_occupancy - th.width_hold:
-        reasons.append(_reason("TRUNCATED") if truncated else _reason("BORDER_WIDTH", pct=round(occ * 100)))
+    # 차지한 폭만으로 기준을 넘으면 예전 사유(WIDTH), 가장자리에서 떨어져 세운 탓에 넘으면 OFF_EDGE
+    pct, free = round(occ * 100), round((1 - eff) * 100)
+    width_reason = None
+    if eff >= hi:
+        width_reason = _reason("TRUNCATED") if truncated else _reason("WIDTH", pct=pct) if occ >= hi else _reason("OFF_EDGE", free=free)
+    elif eff >= lo:
+        width_reason = _reason("TRUNCATED") if truncated else _reason("BORDER_WIDTH", pct=pct) if occ >= lo else _reason("BORDER_OFF_EDGE", free=free)
+    if cross_view:
+        # 가로질러 찍은 사진의 점유율은 통과 근거로도 거절 근거로도 쓰지 않는다:
+        # 낮게 나왔어도 통과시키지 않고, 방향을 바꿔 다시 찍게 한다 (보도 끝이 안 보인다는 TRUNCATED 는 그대로 둠)
+        if width_reason is not None and width_reason["code"] == "TRUNCATED" and occ >= lo:
+            reasons.append(width_reason)  # 차지한 폭만으로도 기준을 넘던 사진만 (예전부터 TRUNCATED 였던 경우)
+        reasons.append(_reason("CROSS_VIEW"))
+    elif width_reason is not None:
+        reasons.append(width_reason)
 
     # 최후 대체 기준: 기기를 옆에서 찍었으면 차체 길이로 대략 cm 환산 (표시만, 판정에는 안 씀)
     L = th.vehicle_length_cm.get(target.kind)
@@ -417,6 +529,7 @@ def _judge_target(scene: Scene, ti: int, th: Thresholds, ground) -> Verdict:
     if L and ext and ext >= 1.2 * (ys.max() - ys.min() + 1):
         metrics["residual_cm_est"] = round(worst["free_px"] * L / ext)
         metrics["scale_source"] = "vehicle_length(추정)"
+    flag_unknown_ground()
     return _finish(verdict)
 
 

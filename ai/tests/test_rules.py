@@ -117,9 +117,11 @@ def test_same_scene_same_verdict():
 
 def test_width_hold_band():
     # 보도 430px: 약 50% 통과, 약 60% 보류(재촬영), 약 70% 거절
+    # 보도 끝(x=630)에 붙여 세운다: 가장자리에서 떨어지면 그 틈만큼 유효 점유율이 올라가
+    # 같은 폭이라도 결과가 달라지기 때문 (tests/test_false_approve.py 의 OFF_EDGE 테스트)
     got = {}
     for px in (215, 258, 301):
-        v = judge(scene([vehicle(230, 230 + px)], *base()))
+        v = judge(scene([vehicle(630 - px, 630)], *base()))
         got[px] = (v.status, codes(v), v.metrics["width_occupancy"])
     assert got[215][0] == APPROVE, got
     assert got[258][0] == RETAKE and got[258][1] == {"BORDER_WIDTH"}, got
