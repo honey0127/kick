@@ -21,7 +21,7 @@ server/
   ground.py     점자블록 30cm 기준 호모그래피 → 조감도 → 단면별 잔여 통행폭(cm)
   zones.geojson 샘플 구역 (경북대 북문 일대, 실제 좌표로 교체 필요)
 web/            모바일 반납 화면 (지도, 카메라, 판정 결과, 반납 완료)
-training/       데이터셋 설정 · 사전라벨 · 학습 · 판정 평가
+training/       데이터셋 설정 · 사전라벨 · 학습 · 판정 평가(evaluate.py) · 측정값 분포(metric_dist.py)
 tests/          규칙·API 테스트 (모델 없이 실행)
 data/collected/ 반납 때 올라온 사진+판정 결과 (재학습용으로 자동 저장)
 ```
@@ -167,12 +167,19 @@ edge_walk 프로젝트에 받아둔 AI Hub 189 Surface(보행자 시점 1920x108
    .venv/Scripts/python training/train.py --model yolo11n-seg.pt --batch 8 --epochs 100
    ```
    끝나면 `models/kick_seg.pt` 로 복사되고, 서버를 재시작하면 적용됩니다.
-6. **판정 평가** — 사람이 판단한 사진을 `data/eval/approve/`, `data/eval/reject/` 에 넣고:
+6. **판정 평가** — 사람이 판단한 사진을 `data/eval/approve/`, `data/eval/reject/` 에 넣고 (애매한 사진은 넣지 않음, 파일 이름 앞에 장소: `북문__IMG_0012.jpg`):
    ```bash
-   .venv/Scripts/python training/evaluate.py
-   .venv/Scripts/python training/evaluate.py --max-width-occupancy 0.55   # 임계값 실험
+   .venv/Scripts/python training/evaluate.py                                  # 판정 + report.csv / summary.json / _vis
+   .venv/Scripts/python training/metric_dist.py                               # 측정값 분포를 정답별로 (기준값이 둘을 가르는지)
+   .venv/Scripts/python training/evaluate.py --sweep min_vehicle_conf=0.3,0.4,0.5,0.6   # 값마다 혼동행렬 -> sweep.csv
+   .venv/Scripts/python training/evaluate.py --set width_hold=0.03            # 기준값을 바꿔서 한 번
+   .venv/Scripts/python training/evaluate.py --holdout 0.4                    # 장소 40% 를 확인용으로 따로 집계
    ```
-   가장 위험한 오류인 "거절돼야 하는데 통과된 사진"을 따로 보여줍니다. 틀린 사진을 다시 라벨링해서 3번부터 반복하세요.
+   - 가장 위험한 오류인 "거절돼야 하는데 통과된 사진"을 따로 보여주고, 비율 옆에 "몇 장 중 몇 장"을 같이 적습니다.
+   - 사유 코드(`rules.py` 의 MESSAGES)를 정답별로 전부 셉니다. 한 번도 안 나온 코드도 0으로 남습니다.
+   - 모델 인식 결과는 처음 한 번만 돌리고 `data/eval/_cache/` 에 저장합니다. `--set`·`--sweep` 은 판정만 다시 하므로 빠르고, 저장본이 다 있으면 torch 없이도 돕니다. 모델 파일이나 사진이 바뀌면 자동으로 다시 인식합니다 (`--no-cache` 로 강제).
+   - 기준값을 이 사진들로 맞추면 같은 사진으로 잰 정확도는 낙관적입니다. `--holdout` 으로 조정용(tune)으로만 맞추고 확인용(check) 숫자를 보고서에 쓰세요.
+   - `summary.json` 에 평가한 커밋·브랜치, 바꾼 기준값, 모델 구성이 같이 남습니다. `server/` 에 커밋 안 한 변경이 있으면 경고합니다 (그 숫자는 재현할 수 없음).
 
    지표는 `data/eval/summary.json` 에 남으니 학습할 때마다 비교하세요.
 
