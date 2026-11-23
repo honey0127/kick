@@ -57,7 +57,12 @@ python -m venv .venv
 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-http://localhost:8000 에서 반납 흐름을 따라갈 수 있습니다. 첫 실행 때 모델(YOLO 20MB, SegFormer 110MB)을 내려받습니다.
+http://localhost:8000 에서 반납 흐름을 따라갈 수 있습니다. 학습한 모델 `models/kick_seg.pt`·`models/kick_surface.pt` 가 저장소에 들어 있어 따로 내려받지 않습니다(둘 중 하나가 없을 때만 대체 모델 YOLO 20MB·SegFormer 110MB 를 내려받음). 서버는 켜지자마자 빈 사진으로 한 번 판정해 두므로, 로그에 `[warm-up] 모델 준비 완료` 가 보인 뒤에는 첫 판정도 느리지 않습니다.
+
+**안드로이드 앱과 연결할 때(시연)**: PC와 휴대폰을 같은 와이파이에 두고 위 명령(`--host 0.0.0.0`)으로 켭니다. `KICK_DEV`·`KICK_OPEN_ANALYZE` 는 켜지 않습니다. 앱은 반납 순서 API(`/api/return/location` → `/api/return/photo` → `/api/return/complete`)만 씁니다.
+1. PC에서 `http://localhost:8000/api/health` 를 열어 `model_loaded: true` 와 backend 에 `kick_seg.pt`·`kick_surface.pt` 가 둘 다 있는지 확인 (하나라도 없으면 정확도가 낮은 대체 모델로 도는 중)
+2. PC의 와이파이 IP(`ipconfig` 의 Wi-Fi IPv4)를 앱의 `local.properties` → `analysis.server.url=http://<IP>:8000` 에 넣고 앱을 빌드
+3. 휴대폰 브라우저에서 `http://<IP>:8000/api/health` 가 열리는지 확인. 안 열리면 Windows 방화벽이 막은 것이다. 와이파이가 "공용 네트워크"면 처음 실행 때 뜨는 방화벽 창에서 공용 네트워크도 허용하거나, 와이파이를 "개인 네트워크"로 바꾼다.
 
 **개발 모드**: `KICK_DEV=1` 로 실행하면 웹 화면에 "테스트 위치로 확인"(GPS 없이 구역 선택)이 보이고, 세션 없이 사진만 판정하는 `/api/analyze` 가 열립니다. 기본값(꺼짐)에서는 둘 다 막혀 있으니 실제 서비스에서는 켜지 마세요.
 
@@ -69,7 +74,7 @@ KICK_DEV=1 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port
 | 환경변수 | 기본값 | 뜻 |
 |---|---|---|
 | `KICK_DEV` | `0` | 개발용 기능 켜기 |
-| `KICK_OPEN_ANALYZE` | `0` | 세션 없는 `/api/analyze` 만 열기 (안드로이드 앱이 쓰는 API, 테스트 위치 버튼은 계속 숨김) |
+| `KICK_OPEN_ANALYZE` | `0` | 세션 없는 `/api/analyze` 만 열기 (위치 확인 없이 사진만 판정하는 테스트용. 앱의 반납 순서는 이게 없어도 동작, 테스트 위치 버튼은 계속 숨김) |
 | `KICK_MAX_UPLOAD_MB` | `15` | 사진 업로드 최대 크기 (넘으면 413) |
 | `KICK_MAX_PHOTO_ATTEMPTS` | `10` | 반납 세션 하나에서 사진 판정 최대 횟수 (넘으면 429, 위치 확인부터 다시) |
 | `KICK_SAVE_UPLOADS` | `1` | 반납 사진 저장 (EXIF 를 지우고 다시 인코딩해 저장) |
