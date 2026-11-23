@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import threading
 import time
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
@@ -25,6 +26,46 @@ STUFF_CLASSES = {"sidewalk", "road", "braille_block", "crosswalk"}
 TILE_CLASS = "braille_tile"  # 점자블록 한 장 (선택 라벨, 실측 정확도↑)
 COCO_VEHICLES = {1: "bicycle", 3: "motorcycle"}  # 킥보드 대용
 CITYSCAPES = {"road": 0, "sidewalk": 1, "motorcycle": 17, "bicycle": 18}
+
+
+@dataclass
+class RawPerception:
+    """모델이 내놓은 그대로의 인식 결과 (기준값을 적용하기 전).
+    기준값만 바꿔 다시 판정할 때 모델을 다시 돌리지 않도록 이것을 저장해 둔다 (training/evaluate.py)."""
+
+    vehicles: list[Vehicle]
+    stuff: dict[str, np.ndarray]  # STUFF_CLASSES 이름 -> bool 마스크
+    tiles: list[np.ndarray] = field(default_factory=list)
+    models_braille: bool = False  # 점자블록을 인식하는 모델이 있었는지 (없으면 색으로 찾음)
+
+
+def build_scene(img: np.ndarray, raw: RawPerception, th: Thresholds) -> Scene:
+    """모델 출력 + 기준값 -> 판정에 쓰는 Scene. raw 의 마스크는 바꾸지 않는다 (저장본을 여러 번 쓰기 때문)."""
+    h, w = img.shape[:2]
+    stuff = {name: raw.stuff[name].copy() for name in STUFF_CLASSES}
+    # 기기 픽셀은 바닥 클래스에서 뺀다. 판정에서 빼는 희미한 검출(확신도 < min_vehicle_conf)은
+    # 빼지 않는다: 빼면 그 자리가 보도도 기기도 아닌 구멍이 되어 폭 계산이 흔들림
+    veh_any = np.zeros((h, w), bool)
+    for v in raw.vehicles:
+        if v.conf >= th.min_vehicle_conf:
+            veh_any |= v.mask
+    for k in stuff:
+        stuff[k] &= ~veh_any
+
+    tiles = list(raw.tiles)
+    # 점자블록을 인식하는 모델이 아예 없을 때만(베이스라인) 노란색으로 찾아본다.
+    # 모델이 있는데 못 찾았으면 없는 것으로 본다: 황색 연석·노란 페인트·낙엽을 점자블록으로 착각하기 쉬움
+    if not stuff["braille_block"].any() and not raw.models_braille:
+        strip, color_tiles = detect_braille_by_color(img, stuff["sidewalk"], stuff["road"])
+        if strip is not None:
+            stuff["braille_block"] = strip & ~veh_any
+            tiles = color_tiles
+    if stuff["braille_block"].any():
+        stuff["sidewalk"] &= ~stuff["braille_block"]
+        stuff["road"] &= ~stuff["braille_block"]
+    tiles = [t & ~veh_any for t in tiles]
+    has = lambda k: stuff[k] if stuff[k].any() else None  # noqa: E731
+    return Scene(list(raw.vehicles), stuff["sidewalk"], stuff["road"], has("braille_block"), has("crosswalk"), tiles)
 
 
 def _device() -> str:
@@ -95,9 +136,12 @@ class Analyzer:
         return out
 
     def perceive(self, img: np.ndarray) -> Scene:
+        return build_scene(img, self.detect(img), self.th)
+
+    def detect(self, img: np.ndarray) -> RawPerception:
+        """모델만 돌린다 (기준값과 무관한 부분)."""
         h, w = img.shape[:2]
-        empty = lambda: np.zeros((h, w), bool)  # noqa: E731
-        stuff = {name: empty() for name in STUFF_CLASSES}
+        stuff = {name: np.zeros((h, w), bool) for name in STUFF_CLASSES}
         vehicles: list[Vehicle] = []
         tiles: list[np.ndarray] = []
 
@@ -126,28 +170,7 @@ class Analyzer:
             if not vehicles:  # YOLO가 놓쳤으면 SegFormer의 자전거/오토바이 픽셀 중 가장 큰 덩어리
                 vehicles = self._largest_blob(np.isin(lab, [CITYSCAPES["bicycle"], CITYSCAPES["motorcycle"]]))
 
-        # 기기 픽셀은 바닥 클래스에서 뺀다. 판정에서 빼는 희미한 검출(확신도 < min_vehicle_conf)은
-        # 빼지 않는다: 빼면 그 자리가 보도도 기기도 아닌 구멍이 되어 폭 계산이 흔들림
-        veh_any = np.zeros((h, w), bool)
-        for v in vehicles:
-            if v.conf >= self.th.min_vehicle_conf:
-                veh_any |= v.mask
-        for k in stuff:
-            stuff[k] &= ~veh_any
-
-        # 점자블록을 인식하는 모델이 아예 없을 때만(베이스라인) 노란색으로 찾아본다.
-        # 모델이 있는데 못 찾았으면 없는 것으로 본다: 황색 연석·노란 페인트·낙엽을 점자블록으로 착각하기 쉬움
-        if not stuff["braille_block"].any() and not self.models_braille:
-            strip, color_tiles = detect_braille_by_color(img, stuff["sidewalk"], stuff["road"])
-            if strip is not None:
-                stuff["braille_block"] = strip & ~veh_any
-                tiles = color_tiles
-        if stuff["braille_block"].any():
-            stuff["sidewalk"] &= ~stuff["braille_block"]
-            stuff["road"] &= ~stuff["braille_block"]
-        tiles = [t & ~veh_any for t in tiles]
-        has = lambda k: stuff[k] if stuff[k].any() else None  # noqa: E731
-        return Scene(vehicles, stuff["sidewalk"], stuff["road"], has("braille_block"), has("crosswalk"), tiles)
+        return RawPerception(vehicles, stuff, tiles, self.models_braille)
 
     @staticmethod
     def _largest_blob(mask: np.ndarray) -> list[Vehicle]:
