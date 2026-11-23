@@ -1,0 +1,36 @@
+name: AI server tests
+
+on:
+  push:
+    paths:
+      - "ai/**"
+      - ".github/workflows/ai-tests.yml"
+  pull_request:
+    paths:
+      - "ai/**"
+      - ".github/workflows/ai-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # 테스트는 AI 모델(torch·ultralytics) 없이 합성 장면과 가짜 분석기로 돈다. 무거운 패키지는 설치하지 않는다.
+      - name: Install test dependencies
+        run: pip install numpy opencv-python-headless fastapi httpx python-multipart pyyaml pytest
+
+      - name: Run tests
+        run: python -m pytest -q
