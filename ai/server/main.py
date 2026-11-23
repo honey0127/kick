@@ -22,9 +22,21 @@ from . import config
 from .rules import APPROVE
 from .zones import ZoneIndex
 
+def _warm_up() -> None:
+    """모델을 불러오고 빈 사진으로 한 번 판정해 둔다. 첫 판정만 몇 초 걸리는 것을 시연 전에 미리 치른다."""
+    t = time.perf_counter()
+    analyzer = get_analyzer()
+    try:
+        analyzer.analyze(np.zeros((720, 960, 3), np.uint8))
+    except Exception as e:  # 미리 돌리기 실패는 서비스에 영향 없음 (첫 요청이 조금 느릴 뿐)
+        print(f"[warm-up] 실패: {e!r}")
+        return
+    print(f"[warm-up] 모델 준비 완료 ({(time.perf_counter() - t) * 1000:.0f}ms)")
+
+
 @asynccontextmanager
 async def lifespan(_app):
-    threading.Thread(target=get_analyzer, daemon=True).start()  # 첫 요청 전에 모델 미리 로드
+    threading.Thread(target=_warm_up, daemon=True).start()  # 첫 요청 전에 모델 로드 + 한 번 판정
     yield
 
 
