@@ -67,6 +67,23 @@ class RemotePhotoAnalyzerTest {
     }
 
     @Test
+    fun retakeWithReview_allowsReviewReturn_andShowsServerMessage() {
+        val r = parseAnalysisResponse(
+            """{"status":"RETAKE","review":true,"review_message":"반납은 받고, 이 사진은 운영팀이 확인합니다.",
+               "reasons":[{"code":"TRUNCATED","status":"RETAKE","message":"보도 양 끝이 화면 밖이에요."}]}""",
+        )
+        assertEquals(ParkingStatus.UNCERTAIN, r.status) // 판정은 양호로 바뀌지 않는다
+        assertTrue(r.reviewReturn)
+        assertEquals(listOf("보도 양 끝이 화면 밖이에요.", "반납은 받고, 이 사진은 운영팀이 확인합니다."), r.findings)
+    }
+
+    @Test
+    fun reviewFlag_isIgnored_unlessRetake() {
+        assertFalse(parseAnalysisResponse("""{"status":"REJECT","review":true}""").reviewReturn)
+        assertFalse(parseAnalysisResponse("""{"status":"RETAKE"}""").reviewReturn)
+    }
+
+    @Test
     fun rejectWithoutMeasurement_usesRatioFinding() {
         val r = parseAnalysisResponse(
             """{"status":"REJECT","metrics":{"width_occupancy":0.72},

@@ -35,10 +35,13 @@ class EvidenceImage(val kind: EvidenceImageKind, val jpeg: ByteArray)
  *   결과 화면은 이 목록에 있는 것만 표시하고, 없는 항목을 지어내 채우지 않는다.
  * @property isMock 실제 AI 분석이 아닌 UI 확인용 임시 결과인지. true면 결과 화면에 그 사실을 표시한다.
  * @property evidenceImages 분석 서버가 보내 준 판정 근거 이미지. 임시 분석기 결과에는 없다.
+ * @property reviewReturn 판단 보류(UNCERTAIN)가 연달아 나와, 서버가 "운영팀 검토 조건으로 반납을 받겠다"고 한 경우.
+ *   판정은 그대로 UNCERTAIN 이다 (양호로 바뀌지 않는다). 부적합(UNSAFE)에는 오지 않는다.
  */
 data class AnalysisResult(
     val status: ParkingStatus,
     val findings: List<String>,
     val isMock: Boolean,
     val evidenceImages: List<EvidenceImage> = emptyList(),
+    val reviewReturn: Boolean = false,
 )
