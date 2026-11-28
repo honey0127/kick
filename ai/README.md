@@ -77,6 +77,7 @@ KICK_DEV=1 .venv/Scripts/python -m uvicorn server.main:app --host 0.0.0.0 --port
 | `KICK_OPEN_ANALYZE` | `0` | 세션 없는 `/api/analyze` 만 열기 (위치 확인 없이 사진만 판정하는 테스트용. 앱의 반납 순서는 이게 없어도 동작, 테스트 위치 버튼은 계속 숨김) |
 | `KICK_MAX_UPLOAD_MB` | `15` | 사진 업로드 최대 크기 (넘으면 413) |
 | `KICK_MAX_PHOTO_ATTEMPTS` | `10` | 반납 세션 하나에서 사진 판정 최대 횟수 (넘으면 429, 위치 확인부터 다시) |
+| `KICK_REVIEW_AFTER_RETAKES` | `3` | 재촬영(RETAKE)이 이만큼 연달아 나오면 반납은 받고 사진을 운영팀 검토 목록(`data/collected/review_queue.jsonl`)에 남김. 판정은 RETAKE 그대로이고 거절(REJECT)에는 적용하지 않음. `0`이면 끔 |
 | `KICK_SAVE_UPLOADS` | `1` | 반납 사진 저장 (EXIF 를 지우고 다시 인코딩해 저장) |
 
 **휴대폰으로 테스트할 때**: 브라우저는 HTTPS에서만 GPS·실시간 카메라를 허용합니다(HTTP면 카메라 앱 업로드로 대체됨). 자체 서명 인증서로 실행하세요.

@@ -193,7 +193,10 @@ async function submitPhoto(blob) {
     $("#metrics").innerHTML = Object.entries(METRIC_LABELS)
       .filter(([k]) => m[k] !== undefined && !(k.endsWith("_overlap") && m[k] === 0))
       .map(([k, [label, fmt]]) => `<dt>${label}</dt><dd>${fmt(m[k])}</dd>`).join("");
-    $("#btn-complete").hidden = r.status !== "APPROVE";
+    // 재촬영이 연달아 나오면 서버가 운영팀 검토 조건으로 반납을 받아 준다 (review). 판정 문구는 RETAKE 그대로 둔다.
+    if (r.review) $("#reasons").innerHTML += `<li class="INFO">${r.review_message}</li>`;
+    $("#btn-complete").hidden = r.status !== "APPROVE" && !r.review;
+    $("#btn-complete").textContent = r.review ? "운영팀 확인을 받고 반납하기" : "반납 완료하기";
     $("#btn-retake").textContent = r.status === "APPROVE" ? "다시 촬영" : "옮긴 뒤 다시 촬영";
   } catch (e) {
     const v = $("#verdict");

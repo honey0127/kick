@@ -29,6 +29,9 @@ SESSION_TTL_S = int(os.getenv("KICK_SESSION_TTL_S", "600"))  # 위치 확인 후
 # 업로드·남용 제한
 MAX_UPLOAD_MB = float(os.getenv("KICK_MAX_UPLOAD_MB", "15"))
 MAX_PHOTO_ATTEMPTS = int(os.getenv("KICK_MAX_PHOTO_ATTEMPTS", "10"))  # 세션 하나에서 사진 판정 최대 횟수
+# 재촬영(RETAKE)이 이만큼 연달아 나오면 반납은 받되 사진을 운영팀 검토 대상으로 남긴다. 0이면 끈다.
+# AI가 판단하지 못한 것(RETAKE)의 비용을 이용자가 계속 치르지 않게 하려는 것이다. 거절(REJECT)에는 적용하지 않는다.
+REVIEW_AFTER_RETAKES = int(os.getenv("KICK_REVIEW_AFTER_RETAKES", "3"))
 
 # 1이면 개발용 기능을 켠다: 세션 없는 /api/analyze, 웹 화면의 '테스트 위치로 확인'(GPS 없이 위치 지정)
 DEV_MODE = os.getenv("KICK_DEV", "0") == "1"
