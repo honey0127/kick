@@ -55,6 +55,8 @@ import com.example.safezone.ui.theme.SafeZoneTheme
  * @param onHomeClick UNSAFE에서 메인 버튼 아래 "홈으로" 버튼
  * @param completion AI 서버에 연결된 반납 순서에서의 반납 완료(③) 상태. 임시 분석기처럼 반납 단계가 없으면 null.
  *   null 이 아니고 결과가 SAFE 면 메인 버튼이 "반납 완료하기"가 되고, 처리 중·실패를 이 화면에서 보여 준다.
+ * @param onReviewReturnClick 판단 보류가 연달아 나와 서버가 검토 조건 반납을 허용했을 때([AnalysisResult.reviewReturn])
+ *   메인 버튼("다시 촬영하기") 아래에 나오는 "운영팀 확인을 받고 반납하기" 버튼
  */
 @Composable
 fun ResultScreen(
@@ -63,10 +65,13 @@ fun ResultScreen(
     onHomeClick: () -> Unit,
     modifier: Modifier = Modifier,
     completion: CompletionUiState? = null,
+    onReviewReturnClick: () -> Unit = {},
 ) {
     val style = result.status.style()
-    // 양호 판정을 받았고 반납 단계가 있으면, 메인 버튼으로 서버에 반납 완료를 알린다.
-    val returnStep = if (result.status == ParkingStatus.SAFE) completion else null
+    // 판단 보류가 연달아 나와 서버가 운영팀 검토 조건으로 반납을 받아 주는 경우. 다시 촬영할지, 그대로 반납할지 사용자가 고른다.
+    val canReviewReturn = result.status == ParkingStatus.UNCERTAIN && result.reviewReturn
+    // 양호 판정을 받았거나 검토 조건 반납이 허용됐고 반납 단계가 있으면, 이 화면에서 서버에 반납 완료를 알린다.
+    val returnStep = if (result.status == ParkingStatus.SAFE || canReviewReturn) completion else null
     val completionFailure = returnStep as? CompletionUiState.Failed
     // 요청을 보내는 중이거나, 완료가 확인되어 반납 완료 화면으로 넘어가는 중에는 버튼을 다시 누를 수 없게 한다.
     val isCompleting = returnStep is CompletionUiState.Completing || returnStep is CompletionUiState.Done
@@ -180,12 +185,29 @@ fun ResultScreen(
                     PrimaryButton(text = style.buttonText, onClick = onPrimaryClick, icon = style.buttonIcon)
                 completionFailure?.sessionExpired == true ->
                     PrimaryButton(text = "위치 다시 확인하기", onClick = onPrimaryClick, icon = Icons.Outlined.Refresh)
+                // 검토 조건 반납: 메인 버튼은 그대로 "다시 촬영하기", 반납은 아래 보조 버튼으로 한다.
+                canReviewReturn -> PrimaryButton(
+                    text = style.buttonText,
+                    onClick = onPrimaryClick,
+                    icon = style.buttonIcon,
+                    enabled = !isCompleting,
+                )
                 else -> PrimaryButton(
                     text = if (isCompleting) "반납 완료 처리 중…" else "반납 완료하기",
                     onClick = onPrimaryClick,
                     icon = Icons.Outlined.CheckCircle,
                     enabled = !isCompleting,
                 )
+            }
+            if (canReviewReturn && returnStep != null && completionFailure?.sessionExpired != true) {
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(onClick = onReviewReturnClick, enabled = !isCompleting) {
+                    Text(
+                        text = if (isCompleting) "반납 완료 처리 중…" else "운영팀 확인을 받고 반납하기",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             if (result.status == ParkingStatus.UNSAFE) {
                 Spacer(modifier = Modifier.height(4.dp))

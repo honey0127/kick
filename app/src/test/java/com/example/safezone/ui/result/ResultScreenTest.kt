@@ -36,6 +36,7 @@ class ResultScreenTest {
 
     private var primaryClicks = 0
     private var homeClicks = 0
+    private var reviewReturnClicks = 0
 
     @After
     fun resetImageLoader() = SingletonImageLoader.reset()
@@ -46,14 +47,16 @@ class ResultScreenTest {
         isMock: Boolean = false,
         evidenceImages: List<EvidenceImage> = emptyList(),
         completion: CompletionUiState? = null,
+        reviewReturn: Boolean = false,
     ) {
         composeRule.setContent {
             SafeZoneTheme {
                 ResultScreen(
-                    result = AnalysisResult(status, findings, isMock, evidenceImages),
+                    result = AnalysisResult(status, findings, isMock, evidenceImages, reviewReturn),
                     onPrimaryClick = { primaryClicks++ },
                     onHomeClick = { homeClicks++ },
                     completion = completion,
+                    onReviewReturnClick = { reviewReturnClicks++ },
                 )
             }
         }
@@ -103,6 +106,34 @@ class ResultScreenTest {
         composeRule.onNodeWithText("반납 완료하기").assertDoesNotExist()
         composeRule.onNodeWithText("위치 다시 확인하기").performClick()
         assertEquals(1, primaryClicks)
+    }
+
+    @Test
+    fun uncertain_reviewReturn_offersReturn_belowRetakeButton() {
+        // 판단 보류가 연달아 나와 서버가 검토 조건 반납을 허용한 경우: 다시 촬영과 반납 중에 고를 수 있다.
+        show(ParkingStatus.UNCERTAIN, completion = CompletionUiState.Idle, reviewReturn = true)
+
+        composeRule.onNodeWithText("다시 촬영하기").performClick()
+        assertEquals(1, primaryClicks)
+        composeRule.onNodeWithText("운영팀 확인을 받고 반납하기").performClick()
+        assertEquals(1, reviewReturnClicks)
+        composeRule.onNodeWithText("반납 완료하기").assertDoesNotExist()
+    }
+
+    @Test
+    fun uncertain_withoutReviewReturn_hasNoReturnButton() {
+        show(ParkingStatus.UNCERTAIN, completion = CompletionUiState.Idle)
+
+        composeRule.onNodeWithText("다시 촬영하기").assertIsDisplayed()
+        composeRule.onNodeWithText("운영팀 확인을 받고 반납하기").assertDoesNotExist()
+    }
+
+    @Test
+    fun unsafe_neverOffersReviewReturn() {
+        // 부적합 판정은 서버가 검토 조건을 붙이지 않는다. 값이 잘못 와도 화면은 반납 버튼을 내지 않는다.
+        show(ParkingStatus.UNSAFE, completion = CompletionUiState.Idle, reviewReturn = true)
+
+        composeRule.onNodeWithText("운영팀 확인을 받고 반납하기").assertDoesNotExist()
     }
 
     @Test

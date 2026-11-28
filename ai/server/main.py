@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config
-from .rules import APPROVE
+from .rules import APPROVE, RETAKE
 from .zones import ZoneIndex
 
 def _warm_up() -> None:
@@ -145,6 +145,8 @@ def check_location(body: LocationIn):
             "zone": r["zone"],
             "created": time.time(),
             "attempts": 0,
+            "retakes": 0,  # 연달아 나온 재촬영(RETAKE) 횟수
+            "review": False,  # 재촬영이 이어져 운영팀 검토 조건으로 반납을 받는 세션인지
         }
         r["token"] = token
     return r
@@ -159,18 +161,49 @@ async def check_photo(token: str = Form(...), file: UploadFile = File(...)):
     img = _decode(await _read_upload(file))
     result = await run_in_threadpool(get_analyzer().analyze, img)
     s["attempts"] += 1
-    s["stage"] = "photo_ok" if result["status"] == APPROVE else "location_ok"
-    result["photo_id"] = _save(img, result, {k: s[k] for k in ("vehicle_id", "lat", "lon", "attempts")})
+    status = result["status"]
+    # 재촬영이 연달아 나온 횟수. 통과·거절이 나오면 0으로 돌아간다.
+    s["retakes"] = s["retakes"] + 1 if status == RETAKE else 0
+    # AI가 판단하지 못해 재촬영이 이어지면 반납은 받되, 이 사진을 운영팀 검토 대상으로 남긴다.
+    # 판정 자체는 RETAKE 그대로 돌려준다 (통과로 바꾸지 않는다). 거절(REJECT)은 다시 세워야만 반납된다.
+    s["review"] = status == RETAKE and 0 < config.REVIEW_AFTER_RETAKES <= s["retakes"]
+    s["stage"] = "photo_ok" if status == APPROVE or s["review"] else "location_ok"
+    result["review"] = s["review"]
+    if s["review"]:
+        result["review_message"] = "사진으로 판단하기 어려운 상태가 이어졌어요. 반납은 받고, 이 사진은 운영팀이 확인합니다."
+    s["photo_id"] = result["photo_id"] = _save(
+        img, result, {k: s[k] for k in ("vehicle_id", "lat", "lon", "attempts", "retakes", "review")}
+    )
     result["attempts"] = s["attempts"]
     return result
 
 
+def _queue_review(s: dict, return_id: str) -> None:
+    """검토 조건으로 받은 반납을 운영팀 검토 목록(review_queue.jsonl)에 한 줄 남긴다."""
+    if not config.SAVE_UPLOADS:
+        return
+    config.COLLECT_DIR.mkdir(parents=True, exist_ok=True)
+    rec = {
+        "return_id": return_id,
+        "vehicle_id": s["vehicle_id"],
+        "photo_id": s.get("photo_id", ""),
+        "lat": s["lat"],
+        "lon": s["lon"],
+        "time": datetime.now().isoformat(timespec="seconds"),
+    }
+    with (config.COLLECT_DIR / "review_queue.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
 @app.post("/api/return/complete")
 def complete(body: TokenIn):
-    """사진이 APPROVE 된 세션만 반납 완료 처리 (결제는 범위에서 뺌)."""
+    """사진이 APPROVE 됐거나, 재촬영이 이어져 검토 조건이 된 세션만 반납 완료 처리 (결제는 범위에서 뺌)."""
     s = _session(body.token, "photo_ok")
     s["stage"] = "done"
-    return {"ok": True, "vehicle_id": s["vehicle_id"], "zone": s["zone"], "return_id": "RT" + secrets.token_hex(4).upper()}  # zone: 위치 확인 때와 같은 형식 (지정 주차구역이면 {"name": ...}, 아니면 null)
+    return_id = "RT" + secrets.token_hex(4).upper()
+    if s["review"]:
+        _queue_review(s, return_id)
+    return {"ok": True, "vehicle_id": s["vehicle_id"], "zone": s["zone"], "return_id": return_id, "review": s["review"]}  # zone: 위치 확인 때와 같은 형식 (지정 주차구역이면 {"name": ...}, 아니면 null)
 
 
 @app.post("/api/analyze")

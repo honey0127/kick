@@ -139,7 +139,18 @@ fun parseAnalysisResponse(json: String): AnalysisResult {
         root.jpegOrNull("overlay_jpeg")?.let { EvidenceImage(EvidenceImageKind.OVERLAY, it) },
         root.jpegOrNull("bev_jpeg")?.let { EvidenceImage(EvidenceImageKind.BIRDS_EYE, it) },
     )
-    return AnalysisResult(status = status, findings = findings, isMock = false, evidenceImages = evidenceImages)
+    // 재촬영이 연달아 나오면 서버가 review=true 를 보낸다 (ai/server/main.py). 판단 보류일 때만 받아들인다.
+    val reviewReturn = status == ParkingStatus.UNCERTAIN && root.optBoolean("review", false)
+    if (reviewReturn && !root.isNull("review_message")) {
+        root.optString("review_message").takeIf { it.isNotBlank() }?.let { findings += it }
+    }
+    return AnalysisResult(
+        status = status,
+        findings = findings,
+        isMock = false,
+        evidenceImages = evidenceImages,
+        reviewReturn = reviewReturn,
+    )
 }
 
 /**

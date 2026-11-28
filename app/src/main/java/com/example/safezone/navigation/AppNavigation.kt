@@ -308,10 +308,18 @@ fun AppNavigation(
                                 // 서버에 반납 완료를 알린다 (③). 결과는 completion 으로 돌아온다.
                                 else -> returnViewModel.complete()
                             }
-                            ParkingStatus.UNSAFE, ParkingStatus.UNCERTAIN -> retakePhoto()
+                            ParkingStatus.UNCERTAIN -> when {
+                                // 검토 조건 반납을 누른 뒤 반납 토큰이 만료됐으면 위치 확인부터 다시 한다.
+                                result.reviewReturn && (completion as? CompletionUiState.Failed)?.sessionExpired == true ->
+                                    startReturn(lastTarget)
+                                else -> retakePhoto()
+                            }
+                            ParkingStatus.UNSAFE -> retakePhoto()
                         }
                     },
                     onHomeClick = goHome,
+                    // 판단 보류가 연달아 나와 서버가 허용한 경우에만 화면에 버튼이 나온다. 서버가 한 번 더 확인한다.
+                    onReviewReturnClick = { returnViewModel?.complete() },
                 )
             }
         }
